@@ -1,0 +1,90 @@
+@import 'tailwindcss';
+
+:root {
+  --me-dark-01: #030406;
+  --me-dark-02: #090d14;
+  --me-glow: #7dd3fc;
+  --me-border: rgba(148, 163, 184, 0.18);
+  --me-text: #eaf3ff;
+  --me-muted: #94a3b8;
+  font-family: 'Inter', 'Segoe UI', sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.9);
+  background: var(--me-dark-01);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html {
+  background: var(--me-dark-01);
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top, rgba(77, 145, 255, 0.12), transparent 35%),
+    linear-gradient(180deg, var(--me-dark-01) 0%, var(--me-dark-02) 100%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+input[type='range'] {
+  accent-color: #67e8f9;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+.bg-me-dark-01 {
+  background-color: var(--me-dark-01);
+}
+
+.text-me-text {
+  color: var(--me-text);
+}
+
+.ui-panel {
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: linear-gradient(180deg, rgba(11, 17, 27, 0.94), rgba(8, 12, 19, 0.92));
+  box-shadow: 0 24px 70px rgba(3, 4, 6, 0.44), inset 0 1px 0 rgba(148, 163, 184, 0.1);
+}
+
+.ui-subpanel {
+  border: 1px solid rgba(148, 163, 184, 0.10);
+  background: linear-gradient(180deg, rgba(9, 14, 22, 0.65), rgba(10, 15, 23, 0.92));
+  box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.08);
+}
+
+.ui-panel {
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: linear-gradient(180deg, rgba(11, 17, 27, 0.90), rgba(6, 10, 16, 0.94));
+  box-shadow: 0 24px 60px rgba(3, 4, 6, 0.38), inset 0 1px 0 rgba(148, 163, 184, 0.08);
+}
+
+.hero-object {
+  animation: slowFloat 10s ease-in-out infinite;
+}
+
+@keyframes slowFloat {
+  0%,
+  100% {
+    transform: translate3d(0px, 0px, 0px) rotateX(8deg) rotateY(-14deg);
+  }
+  50% {
+    transform: translate3d(0px, -10px, 0px) rotateX(10deg) rotateY(12deg);
+  }
+}
