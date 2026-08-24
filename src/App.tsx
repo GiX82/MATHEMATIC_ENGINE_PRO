@@ -1,43 +1,44 @@
 import { Suspense, lazy, useEffect, type ReactNode } from 'react';
-import { BrowserRouter, Link, Route, Routes } from 'react-router-dom';
-import { engineNames, paletteNames } from './domain/labels';
-import { useStore } from './store/useStore';
+import { BrowserRouter, Link, Route, Routes, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { useGalleryStore } from './store/useGalleryStore';
+import { useUserStore } from './store/useUserStore';
 
 const GeneratorPage = lazy(() => import('./pages/GeneratorPage'));
 
-function Layout({ children }: { children: ReactNode }) {
+function Layout({ children, hideHeader = false }: { children: ReactNode; hideHeader?: boolean }) {
+  const { t } = useTranslation();
   return (
     <div className="min-h-screen bg-me-dark-01 text-me-text">
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top,_rgba(31,205,255,0.10),_transparent_28%),radial-gradient(circle_at_80%_0%,_rgba(168,85,247,0.14),_transparent_32%)]" />
-      <header className="sticky top-0 z-40 border-b border-white/8 bg-[#050a12]/70 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-400/30 bg-cyan-500/10 text-sm font-semibold text-cyan-200 shadow-[0_0_30px_rgba(34,211,238,0.2)]">
-              M
+      {!hideHeader && (
+        <header className="sticky top-0 z-40 border-b border-white/8 bg-[#050a12]/70 backdrop-blur-xl">
+          <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-400/30 bg-cyan-500/10 text-sm font-semibold text-cyan-200 shadow-[0_0_30px_rgba(34,211,238,0.2)]">
+                M
+              </div>
+              <div>
+                <p className="text-[9px] uppercase tracking-[0.35em] text-zinc-500">GiX</p>
+                <h1 className="text-base font-semibold tracking-[0.18em] text-white">MATHEMATIC_ENGINE</h1>
+              </div>
             </div>
-            <div>
-              <p className="text-[9px] uppercase tracking-[0.35em] text-zinc-500">GiX</p>
-              <h1 className="text-base font-semibold tracking-[0.18em] text-white">MATHEMATIC_ENGINE</h1>
+
+            <nav className="hidden items-center gap-6 text-sm text-zinc-300 md:flex">
+              <Link to="/" className="transition hover:text-cyan-200">{t('home')}</Link>
+              <Link to="/generator" className="transition hover:text-cyan-200">{t('studio')}</Link>
+              <Link to="/gallery" className="transition hover:text-cyan-200">{t('gallery')}</Link>
+              <Link to="/settings" className="transition hover:text-cyan-200">{t('settings')}</Link>
+            </nav>
+
+            <div className="flex items-center gap-3">
+              <Link to="/generator" className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-[10px] uppercase tracking-[0.25em] text-cyan-100 shadow-[0_0_25px_rgba(34,211,238,0.12)] transition hover:bg-cyan-500/15">
+                {t('studio')}
+              </Link>
             </div>
           </div>
-
-          <nav className="hidden items-center gap-6 text-sm text-zinc-300 md:flex">
-            <Link to="/" className="transition hover:text-cyan-200">Home</Link>
-            <Link to="/generator" className="transition hover:text-cyan-200">Studio</Link>
-            <Link to="/gallery" className="transition hover:text-cyan-200">Galleria</Link>
-            <Link to="/settings" className="transition hover:text-cyan-200">Impostazioni</Link>
-          </nav>
-
-          <div className="flex items-center gap-3">
-            <button className="hidden rounded-full border border-white/10 bg-white/5 px-3 py-2 text-[10px] uppercase tracking-[0.25em] text-zinc-200 sm:inline-flex">
-              Project
-            </button>
-            <button className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-[10px] uppercase tracking-[0.25em] text-cyan-100 shadow-[0_0_25px_rgba(34,211,238,0.12)] transition hover:bg-cyan-500/15">
-              2D / 3D
-            </button>
-          </div>
-        </div>
-      </header>
+        </header>
+      )}
 
       <main className="relative z-10">{children}</main>
     </div>
@@ -45,6 +46,7 @@ function Layout({ children }: { children: ReactNode }) {
 }
 
 function HomePage() {
+  const { t } = useTranslation();
   return (
     <div className="mx-auto max-w-7xl px-4 pb-20 pt-8 sm:px-6 lg:px-8">
       <section className="ui-panel relative overflow-hidden rounded-[32px] p-4 sm:p-6 lg:p-8">
@@ -52,7 +54,7 @@ function HomePage() {
         <div className="relative grid items-center gap-10 lg:grid-cols-[1.15fr_0.85fr]">
           <div>
             <div className="mb-5 inline-flex items-center rounded-full border border-cyan-400/20 bg-cyan-500/8 px-3 py-1.5 text-[10px] uppercase tracking-[0.32em] text-cyan-200">
-              Studio generativo matematico
+              {t('studio')} generativo matematico
             </div>
             <h2 className="max-w-2xl text-4xl font-black tracking-[-0.06em] text-white sm:text-5xl lg:text-6xl">
               Trasforma il numero in una forma viva.
@@ -112,21 +114,20 @@ function HomePage() {
 }
 
 function GalleryPage() {
-  const items = useStore((state) => state.gallery);
-  const loadGallery = useStore((state) => state.loadGallery);
+  const { t } = useTranslation();
+  const items = useGalleryStore((s) => s.gallery);
+  const loadGallery = useGalleryStore((s) => s.loadGallery);
 
-  useEffect(() => {
-    loadGallery();
-  }, [loadGallery]);
+  useEffect(() => { loadGallery(); }, [loadGallery]);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 lg:px-8">
-      <h2 className="text-3xl font-bold text-white">Galleria</h2>
-      <p className="mt-3 text-zinc-400">L’archivio locale conserva le opere salvate.</p>
+      <h2 className="text-3xl font-bold text-white">{t('gallery')}</h2>
+      <p className="mt-3 text-zinc-400">L'archivio locale conserva le opere salvate.</p>
       <div className="mt-10 grid gap-5 md:grid-cols-3">
         {items.length === 0 ? (
           <div className="col-span-full rounded-[24px] border border-dashed border-white/10 bg-white/5 p-8 text-center text-zinc-400">
-            Nessuna opera salvata ancora.
+            {t('no_saved_artworks')}
           </div>
         ) : (
           items.map((item) => (
@@ -135,8 +136,8 @@ function GalleryPage() {
               <div className="space-y-2 p-4">
                 <p className="text-sm text-zinc-300">Seed {item.seed}</p>
                 <div className="flex items-center justify-between text-xs text-zinc-400">
-                  <span>{paletteNames[item.palette]}</span>
-                  <span>{item.mode === '2d' ? '2D' : '3D'} • {engineNames[item.engine]}</span>
+                  <span>{item.palette}</span>
+                  <span>{item.mode === '2d' ? '2D' : '3D'}</span>
                 </div>
               </div>
             </div>
@@ -148,21 +149,22 @@ function GalleryPage() {
 }
 
 function SettingsPage() {
-  const { premium, devMode, creatorName, togglePremium, setCreatorName, setDevMode } = useStore();
+  const { t } = useTranslation();
+  const { premium, devMode, creatorName, togglePremium, setCreatorName, setDevMode } = useUserStore();
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-20 sm:px-6 lg:px-8">
-      <h2 className="text-3xl font-bold text-white">Impostazioni</h2>
+      <h2 className="text-3xl font-bold text-white">{t('settings')}</h2>
       <div className="mt-8 grid gap-6 md:grid-cols-2">
         <div className="rounded-[24px] border border-white/10 bg-white/5 p-5">
-          <p className="text-sm uppercase tracking-[0.25em] text-zinc-500">Profilo</p>
+          <p className="text-sm uppercase tracking-[0.25em] text-zinc-500">{t('profile')}</p>
           <div className="mt-4 space-y-3 text-zinc-300">
             <label className="block text-sm text-zinc-400">
-              Nome creatore
+              {t('creator_name')}
               <input
                 type="text"
                 value={creatorName}
-                onChange={(event) => setCreatorName(event.target.value)}
+                onChange={(e) => setCreatorName(e.target.value)}
                 className="mt-2 w-full rounded-xl border border-white/10 bg-[#0b111d] px-3 py-2 text-white outline-none"
               />
             </label>
@@ -173,10 +175,15 @@ function SettingsPage() {
           <p className="text-sm uppercase tracking-[0.25em] text-zinc-500">Sviluppo</p>
           <div className="mt-4 space-y-4 text-zinc-300">
             <label className="flex items-center justify-between gap-4">
-              <span>Dev mode</span>
-              <input type="checkbox" checked={devMode} onChange={(event) => setDevMode(event.target.checked)} className="h-4 w-4 accent-cyan-400" />
+              <span>{t('developer_mode')}</span>
+              <input type="checkbox" checked={devMode} onChange={(e) => setDevMode(e.target.checked)} className="h-4 w-4 accent-cyan-400" />
             </label>
-            <div className="flex items-center justify-between"><span>Premium</span><button type="button" onClick={togglePremium} className="text-cyan-300 underline">{premium ? 'Attivo' : 'Anteprima'}</button></div>
+            <div className="flex items-center justify-between">
+              <span>{t('premium')}</span>
+              <button type="button" onClick={togglePremium} className="text-cyan-300 underline">
+                {premium ? t('premium_active') : t('enable_premium')}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -184,25 +191,50 @@ function SettingsPage() {
   );
 }
 
+function NotFoundPage() {
+  const { t } = useTranslation();
+  return (
+    <div className="mx-auto max-w-5xl px-4 py-32 text-center">
+      <p className="text-xs uppercase tracking-[0.35em] text-cyan-300">404</p>
+      <h2 className="mt-4 text-3xl font-bold text-white">{t('page_not_found')}</h2>
+      <p className="mt-3 text-zinc-400">{t('page_not_found_desc')}</p>
+      <Link to="/" className="mt-7 inline-flex rounded-full border border-cyan-400/20 bg-cyan-500/10 px-5 py-2.5 text-sm text-cyan-200 transition hover:bg-cyan-500/15">
+        {t('back_home')}
+      </Link>
+    </div>
+  );
+}
+
+function AppRoutes() {
+  const location = useLocation();
+  const isGenerator = location.pathname === '/generator';
+  const { t } = useTranslation();
+
+  return (
+    <Layout hideHeader={isGenerator}>
+      <Suspense
+        fallback={
+          <div className="mx-auto max-w-[1500px] px-4 py-20 text-xs uppercase tracking-[0.35em] text-cyan-200">
+            {t('loading')}
+          </div>
+        }
+      >
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/generator" element={<GeneratorPage />} />
+          <Route path="/gallery" element={<GalleryPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </Suspense>
+    </Layout>
+  );
+}
+
 function App() {
   return (
     <BrowserRouter>
-      <Layout>
-        <Suspense
-          fallback={
-            <div className="mx-auto max-w-[1500px] px-4 py-20 text-xs uppercase tracking-[0.35em] text-cyan-200">
-              Caricamento studio…
-            </div>
-          }
-        >
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/generator" element={<GeneratorPage />} />
-            <Route path="/gallery" element={<GalleryPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-          </Routes>
-        </Suspense>
-      </Layout>
+      <AppRoutes />
     </BrowserRouter>
   );
 }

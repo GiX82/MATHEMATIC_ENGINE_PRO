@@ -8,6 +8,13 @@ export const geometryCatalog = {
   tubes: { id: 'tubes', label: 'Tubature', description: 'Curve con spessore volumetrico', premium: true },
   surface: { id: 'surface', label: 'Superfici', description: 'Superfici e mesh generate', premium: true },
   mesh: { id: 'mesh', label: 'Mesh 3D', description: 'Mesh volumetriche cinematiche', premium: true },
+  ribbon: { id: 'ribbon', label: 'Nastro', description: 'Nastro continuo lungo la curva', premium: true },
+  torus: { id: 'torus', label: 'Toro', description: 'Toro rotazionale con materiale PBR', premium: true },
+  cylinder: { id: 'cylinder', label: 'Cilindro', description: 'Cilindri lungo i punti della curva', premium: true },
+  cone: { id: 'cone', label: 'Cono', description: 'Coni con orientamento variabile', premium: true },
+  branching: { id: 'branching', label: 'Rami', description: 'Sistemi ramificati procedurali', premium: true },
+  network: { id: 'network', label: 'Rete', description: 'Grafi con nodi e connessioni', premium: true },
+  trail: { id: 'trail', label: 'Scia', description: 'Linee di scia lungo la traiettoria', premium: true },
 } as const;
 
 export const materialCatalog = {

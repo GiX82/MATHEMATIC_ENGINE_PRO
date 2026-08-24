@@ -4,7 +4,7 @@ import { getPaletteDefinition } from '../domain/palettes';
 import type { ArtworkPoint, EngineId, GridId, PaletteId } from '../domain/types';
 
 export type GeneratorEngine = EngineId;
-export type SpatialGrid = GridId | 'polar' | 'hex';
+export type SpatialGrid = GridId;
 export type PaletteKey = PaletteId;
 
 export { clampSeed, generateSequence, engineDefinitions, gridDefinitions, getPaletteDefinition };
@@ -59,24 +59,36 @@ export function hashSequence(sequence: number[]): string {
 
 export function buildArtwork(seed: number, maxSteps = 200, engine: GeneratorEngine = 'collatz', grid: SpatialGrid = 'ulam') {
   const sequence = generateSequence(seed, engine, maxSteps);
+
+  let maxValue = 0;
+  for (let i = 0; i < sequence.length; i++) {
+    if (sequence[i] > maxValue) maxValue = sequence[i];
+  }
+
+  const safeMax = Math.max(1, maxValue);
   const points = sequence.map((value, index) => {
     const pos = gridPosition(value, grid);
-    const normalized = value / Math.max(1, Math.max(...sequence));
     return {
       index,
       value,
       x: pos.x,
       y: pos.y,
-      z: normalized,
+      z: value / safeMax,
     };
   });
 
-  const maxValue = Math.max(...sequence);
+  let even = 0;
+  let odd = 0;
+  for (let i = 0; i < sequence.length; i++) {
+    if (sequence[i] % 2 === 0) even++;
+    else odd++;
+  }
+
   const stats = {
     length: sequence.length,
     maxValue,
-    even: sequence.filter((n) => n % 2 === 0).length,
-    odd: sequence.filter((n) => n % 2 !== 0).length,
+    even,
+    odd,
     peak: maxValue,
     hash: hashSequence(sequence),
   };
@@ -87,20 +99,22 @@ export function buildArtwork(seed: number, maxSteps = 200, engine: GeneratorEngi
 export function normalizeArtwork(points: ArtworkPoint[]) {
   if (points.length === 0) return points;
 
-  const xs = points.map((point) => point.x);
-  const ys = points.map((point) => point.y);
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
 
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
 
-  const width = Math.max(1, maxX - minX);
-  const height = Math.max(1, maxY - minY);
   const centerX = (minX + maxX) / 2;
   const centerY = (minY + maxY) / 2;
-
-  const maxDimension = Math.max(width, height) || 1;
+  const maxDimension = Math.max(maxX - minX, maxY - minY) || 1;
   const scale = 2.3 / maxDimension;
 
   return points.map((point) => ({

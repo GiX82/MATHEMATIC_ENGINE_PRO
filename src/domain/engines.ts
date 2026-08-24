@@ -274,12 +274,13 @@ export function bellSequence(seed: number, maxIterations = 200): number[] {
   return sequence;
 }
 
-export function stirlingSequence(seed: number, maxIterations = 200): number[] {
+export function triangularSequence(seed: number, maxIterations = 200): number[] {
   const safeSeed = clampSeed(seed);
   const sequence: number[] = [];
 
   for (let index = 0; index < maxIterations; index += 1) {
-    sequence.push((safeSeed + index) * (safeSeed + index + 1) / 2);
+    const n = safeSeed + index;
+    sequence.push((n * (n + 1)) / 2);
   }
 
   return sequence;
@@ -297,6 +298,290 @@ export function customRecurrenceSequence(seed: number, maxIterations = 200): num
   }
 
   return sequence;
+}
+
+export function lucasSequence(seed: number, maxIterations = 200): number[] {
+  const safeSeed = clampSeed(seed);
+  const sequence = [safeSeed];
+  let a = safeSeed;
+  let b = safeSeed + 1;
+  for (let i = 1; i < maxIterations; i++) {
+    const next = a + b;
+    sequence.push(next);
+    a = b;
+    b = next;
+    if (next > Number.MAX_SAFE_INTEGER / 2) break;
+  }
+  return sequence;
+}
+
+export function pellSequence(seed: number, maxIterations = 200): number[] {
+  const safeSeed = clampSeed(seed);
+  const sequence = [safeSeed];
+  let a = 0;
+  let b = safeSeed || 1;
+  for (let i = 1; i < maxIterations; i++) {
+    const next = 2 * b + a;
+    sequence.push(next);
+    a = b;
+    b = next;
+    if (next > Number.MAX_SAFE_INTEGER / 2) break;
+  }
+  return sequence;
+}
+
+export function perfectNumberSequence(seed: number, maxIterations = 200): number[] {
+  const safeSeed = clampSeed(seed);
+  const sequence: number[] = [];
+  let candidate = Math.max(2, safeSeed);
+  while (sequence.length < maxIterations) {
+    let sum = 1;
+    const limit = Math.floor(Math.sqrt(candidate));
+    for (let d = 2; d <= limit; d++) {
+      if (candidate % d === 0) {
+        sum += d;
+        if (d !== candidate / d) sum += candidate / d;
+      }
+    }
+    if (sum === candidate && candidate > 1) sequence.push(candidate);
+    candidate++;
+    if (candidate > 100000) break;
+  }
+  return sequence;
+}
+
+export function squareNumberSequence(seed: number, maxIterations = 200): number[] {
+  const safeSeed = clampSeed(seed);
+  const sequence: number[] = [];
+  for (let i = 0; i < maxIterations; i++) {
+    const n = safeSeed + i;
+    sequence.push(n * n);
+  }
+  return sequence;
+}
+
+export function logisticMapSequence(seed: number, maxIterations = 300): number[] {
+  const safeSeed = clampSeed(seed);
+  const r = 3.5 + (safeSeed % 40) * 0.01;
+  const sequence: number[] = [];
+  let x = (safeSeed % 1000) / 1000 || 0.5;
+  for (let i = 0; i < maxIterations; i++) {
+    x = r * x * (1 - x);
+    sequence.push(x * 10000);
+  }
+  return sequence;
+}
+
+export function lorenzSequence(seed: number, maxIterations = 500): number[] {
+  const safeSeed = clampSeed(seed);
+  const sigma = 10;
+  const rho = 28;
+  const beta = 8 / 3;
+  const dt = 0.005;
+  let x = (safeSeed % 1000) / 100 || 1;
+  let y = (safeSeed % 500) / 100 || 1;
+  let z = (safeSeed % 300) / 100 || 1;
+  const sequence: number[] = [];
+  for (let i = 0; i < maxIterations; i++) {
+    const dx = sigma * (y - x) * dt;
+    const dy = (x * (rho - z) - y) * dt;
+    const dz = (x * y - beta * z) * dt;
+    x += dx;
+    y += dy;
+    z += dz;
+    sequence.push(Math.sqrt(x * x + y * y + z * z) * 100);
+  }
+  return sequence;
+}
+
+export function henonMapSequence(seed: number, maxIterations = 300): number[] {
+  const safeSeed = clampSeed(seed);
+  const a = 1.4;
+  const b = 0.3;
+  let x = (safeSeed % 1000) / 1000 || 0.1;
+  let y = 0;
+  const sequence: number[] = [];
+  for (let i = 0; i < maxIterations; i++) {
+    const newX = 1 - a * x * x + y;
+    y = b * x;
+    x = newX;
+    sequence.push(x * 1000 + 1500);
+  }
+  return sequence;
+}
+
+export function rosslerSequence(seed: number, maxIterations = 500): number[] {
+  const safeSeed = clampSeed(seed);
+  const a = 0.2;
+  const b = 0.2;
+  const c = 5.7;
+  const dt = 0.005;
+  let x = (safeSeed % 1000) / 100 || 1;
+  let y = 0;
+  let z = 0;
+  const sequence: number[] = [];
+  for (let i = 0; i < maxIterations; i++) {
+    const dx = -(y + z) * dt;
+    const dy = (x + a * y) * dt;
+    const dz = (b + z * (x - c)) * dt;
+    x += dx;
+    y += dy;
+    z += dz;
+    sequence.push(Math.sqrt(x * x + y * y + z * z) * 100);
+  }
+  return sequence;
+}
+
+export function mandelbrotSequence(seed: number, maxIterations = 300): number[] {
+  const safeSeed = clampSeed(seed);
+  const sequence: number[] = [];
+  const cx = (safeSeed % 400) / 100 - 2;
+  const cy = (safeSeed % 200) / 100 - 1;
+  for (let i = 0; i < maxIterations; i++) {
+    const px = (i % 20 - 10) / 5;
+    const py = (Math.floor(i / 20) - 15) / 5;
+    let zx = 0, zy = 0;
+    let iteration = 0;
+    while (zx * zx + zy * zy < 4 && iteration < 50) {
+      const tmp = zx * zx - zy * zy + cx + px * 0.1;
+      zy = 2 * zx * zy + cy + py * 0.1;
+      zx = tmp;
+      iteration++;
+    }
+    sequence.push(iteration);
+  }
+  return sequence;
+}
+
+export function juliaSequence(seed: number, maxIterations = 300): number[] {
+  const safeSeed = clampSeed(seed);
+  const sequence: number[] = [];
+  const cr = (safeSeed % 400) / 200 - 1;
+  const ci = (safeSeed % 200) / 200 - 0.5;
+  for (let i = 0; i < maxIterations; i++) {
+    let zx = (i % 20 - 10) / 5;
+    let zy = (Math.floor(i / 20) - 15) / 5;
+    let iteration = 0;
+    while (zx * zx + zy * zy < 4 && iteration < 50) {
+      const tmp = zx * zx - zy * zy + cr;
+      zy = 2 * zx * zy + ci;
+      zx = tmp;
+      iteration++;
+    }
+    sequence.push(iteration);
+  }
+  return sequence;
+}
+
+export function burningShipSequence(seed: number, maxIterations = 300): number[] {
+  const safeSeed = clampSeed(seed);
+  const sequence: number[] = [];
+  const cx = (safeSeed % 400) / 100 - 2;
+  const cy = (safeSeed % 200) / 100 - 2;
+  for (let i = 0; i < maxIterations; i++) {
+    let zx = 0, zy = 0;
+    const px = (i % 20 - 10) / 5;
+    const py = (Math.floor(i / 20) - 15) / 5;
+    let iteration = 0;
+    while (zx * zx + zy * zy < 4 && iteration < 50) {
+      const tmp = zx * zx - zy * zy + cx + px * 0.1;
+      zy = Math.abs(2 * zx * zy) + cy + py * 0.1;
+      zx = Math.abs(tmp);
+      iteration++;
+    }
+    sequence.push(iteration);
+  }
+  return sequence;
+}
+
+export function lSystemSequence(seed: number, maxIterations = 300): number[] {
+  const safeSeed = clampSeed(seed);
+  const sequence: number[] = [];
+  let axiom = 'F';
+  const rules: Record<string, string> = { F: 'F+F-F-F+F' };
+  const iterations = Math.min(4, Math.floor(safeSeed / 250) + 1);
+  let current = axiom;
+  for (let i = 0; i < iterations; i++) {
+    let next = '';
+    for (const ch of current) {
+      next += rules[ch] ?? ch;
+    }
+    current = next;
+  }
+  let angle = 0;
+  let x = 0, y = 0;
+  const stack: Array<{ x: number; y: number; angle: number }> = [];
+  const step = 2;
+  for (const ch of current) {
+    if (ch === 'F') {
+      x += step * Math.cos(angle);
+      y += step * Math.sin(angle);
+      sequence.push(x * 10 + 500);
+      sequence.push(y * 10 + 500);
+    } else if (ch === '+') {
+      angle += Math.PI / 2;
+    } else if (ch === '-') {
+      angle -= Math.PI / 2;
+    } else if (ch === '[') {
+      stack.push({ x, y, angle });
+    } else if (ch === ']') {
+      const state = stack.pop();
+      if (state) { x = state.x; y = state.y; angle = state.angle; }
+    }
+    if (sequence.length >= maxIterations) break;
+  }
+  return sequence.slice(0, maxIterations);
+}
+
+export function phyllotaxisSequence(seed: number, maxIterations = 300): number[] {
+  const safeSeed = clampSeed(seed);
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+  const sequence: number[] = [];
+  for (let i = 0; i < maxIterations; i++) {
+    const angle = i * goldenAngle + safeSeed * 0.001;
+    const radius = Math.sqrt(i) * 10;
+    const x = Math.cos(angle) * radius;
+    const y = Math.sin(angle) * radius;
+    sequence.push(Math.sqrt(x * x + y * y) * 10);
+  }
+  return sequence;
+}
+
+export function cellularAutomataSequence(seed: number, maxIterations = 300): number[] {
+  const safeSeed = clampSeed(seed);
+  const width = 64;
+  const rule = safeSeed % 256;
+  let cells = new Array(width).fill(0);
+  cells[Math.floor(width / 2)] = 1;
+  const sequence: number[] = [];
+  const rows = Math.floor(maxIterations / width) + 1;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < width; c++) {
+      sequence.push(cells[c] ? 1 : 0);
+    }
+    const next = new Array(width).fill(0);
+    for (let c = 0; c < width; c++) {
+      const left = cells[(c - 1 + width) % width];
+      const center = cells[c];
+      const right = cells[(c + 1) % width];
+      const pattern = (left << 2) | (center << 1) | right;
+      next[c] = (rule >> pattern) & 1;
+    }
+    cells = next;
+  }
+  return sequence.slice(0, maxIterations);
+}
+
+export function sierpinskiSequence(seed: number, maxIterations = 300): number[] {
+  void seed;
+  const sequence: number[] = [];
+  const size = Math.min(64, Math.ceil(Math.sqrt(maxIterations)));
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      sequence.push((x & y) === 0 ? 1 : 0);
+    }
+  }
+  return sequence.slice(0, maxIterations);
 }
 
 export const engineDefinitions: Record<EngineId, EngineDefinition> = {
@@ -391,19 +676,124 @@ export const engineDefinitions: Record<EngineId, EngineDefinition> = {
     premium: true,
     generate: bellSequence,
   },
-  stirling: {
-    id: 'stirling',
-    name: 'Stirling',
-    description: 'Partizioni con simmetria combinatoria.',
+  triangular: {
+    id: 'triangular',
+    name: 'Triangular',
+    description: 'Numeri triangolari con simmetria crescente.',
     premium: true,
-    generate: stirlingSequence,
+    generate: triangularSequence,
   },
   'custom-recurrence': {
     id: 'custom-recurrence',
     name: 'Ricorrenza personalizzata',
-    description: 'Formula definita dall’utente, pronta ad essere estesa.',
+    description: 'Formula definita dall\'utente, pronta ad essere estesa.',
     premium: true,
     generate: customRecurrenceSequence,
+  },
+  lucas: {
+    id: 'lucas',
+    name: 'Lucas',
+    description: 'Sequenza di Lucas, simile a Fibonacci.',
+    premium: true,
+    generate: lucasSequence,
+  },
+  pell: {
+    id: 'pell',
+    name: 'Pell',
+    description: 'Numeri di Pell, equazione diofantea.',
+    premium: true,
+    generate: pellSequence,
+  },
+  perfect: {
+    id: 'perfect',
+    name: 'Perfetti',
+    description: 'Numeri perfetti: somma dei divisori uguali al numero.',
+    premium: true,
+    generate: perfectNumberSequence,
+  },
+  square: {
+    id: 'square',
+    name: 'Quadrati',
+    description: 'Numeri quadrati: n².',
+    premium: true,
+    generate: squareNumberSequence,
+  },
+  'logistic-map': {
+    id: 'logistic-map',
+    name: 'Logistic Map',
+    description: 'Mappa logistica caotica: x_{n+1} = r·x·(1-x).',
+    premium: true,
+    generate: logisticMapSequence,
+  },
+  lorenz: {
+    id: 'lorenz',
+    name: 'Lorenz',
+    description: 'Attrattore di Lorenz: sistema dinamico caotico.',
+    premium: true,
+    generate: lorenzSequence,
+  },
+  henon: {
+    id: 'henon',
+    name: 'Hénon',
+    description: 'Mappa di Hénon: attrattore strano bidimensionale.',
+    premium: true,
+    generate: henonMapSequence,
+  },
+  rossler: {
+    id: 'rossler',
+    name: 'Rössler',
+    description: 'Attrattore di Rössler: oscillazioni caotiche.',
+    premium: true,
+    generate: rosslerSequence,
+  },
+  mandelbrot: {
+    id: 'mandelbrot',
+    name: 'Mandelbrot',
+    description: 'Insieme di Mandelbrot: frattale complesso.',
+    premium: true,
+    generate: mandelbrotSequence,
+  },
+  julia: {
+    id: 'julia',
+    name: 'Julia',
+    description: 'Insieme di Julia: frattale derivato.',
+    premium: true,
+    generate: juliaSequence,
+  },
+  'burning-ship': {
+    id: 'burning-ship',
+    name: 'Burning Ship',
+    description: 'Nave che brucia: variante del Mandelbrot.',
+    premium: true,
+    generate: burningShipSequence,
+  },
+  lsystem: {
+    id: 'lsystem',
+    name: 'L-System',
+    description: 'Sistemi di Lindenmayer: crescita vegetale e frattali.',
+    premium: true,
+    generate: lSystemSequence,
+  },
+  phyllotaxis: {
+    id: 'phyllotaxis',
+    name: 'Phyllotaxis',
+    description: 'Angolo aureo: disposizione foglie e semi.',
+    premium: true,
+    generate: phyllotaxisSequence,
+  },
+  'cellular-automata': {
+    id: 'cellular-automata',
+    name: 'Cellular Automata',
+    description: 'Automi cellulari unidimensionali (Regola 30).',
+    premium: true,
+    generate: cellularAutomataSequence,
+  },
+  sierpinski: {
+    id: 'sierpinski',
+    name: 'Sierpinski',
+    description: 'Triangolo di Sierpinski: frattale binario.',
+    premium: true,
+    generate: sierpinskiSequence,
   },
 };
 

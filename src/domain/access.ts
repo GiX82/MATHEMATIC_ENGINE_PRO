@@ -1,6 +1,6 @@
 import type { GeneratorEngine, PaletteKey, SpatialGrid } from '../lib/math';
 
-export type AccessFeature = 'engine' | 'grid' | 'mode' | 'palette' | 'geometry' | 'material' | 'effect';
+export type AccessFeature = 'engine' | 'grid' | 'mode' | 'palette' | 'geometry' | 'material' | 'effect' | 'lightPreset' | 'motionPreset' | 'cameraPreset';
 
 export const freeAccess = {
   engines: ['collatz'] as const,
@@ -34,6 +34,12 @@ export function canAccessFeature(
       return freeAccess.materials.includes(value as (typeof freeAccess.materials)[number]);
     case 'effect':
       return freeAccess.effects.includes(value as (typeof freeAccess.effects)[number]);
+    case 'lightPreset':
+      return value === 'standard';
+    case 'motionPreset':
+      return ['ease-in-out', 'ease-in', 'ease-out'].includes(value ?? '');
+    case 'cameraPreset':
+      return value === 'orbit';
     default:
       return true;
   }
@@ -55,6 +61,12 @@ export function getAvailableFeatureLabel(feature: AccessFeature): string {
       return 'materiali';
     case 'effect':
       return 'effetti';
+    case 'lightPreset':
+      return 'illuminazione';
+    case 'motionPreset':
+      return 'movimento';
+    case 'cameraPreset':
+      return 'camera';
     default:
       return 'funzioni';
   }

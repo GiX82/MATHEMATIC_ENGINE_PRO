@@ -12,8 +12,23 @@ export type EngineId =
   | 'polygonal'
   | 'catalan'
   | 'bell'
-  | 'stirling'
-  | 'custom-recurrence';
+  | 'triangular'
+  | 'custom-recurrence'
+  | 'lucas'
+  | 'pell'
+  | 'perfect'
+  | 'square'
+  | 'logistic-map'
+  | 'lorenz'
+  | 'henon'
+  | 'rossler'
+  | 'mandelbrot'
+  | 'julia'
+  | 'burning-ship'
+  | 'lsystem'
+  | 'phyllotaxis'
+  | 'cellular-automata'
+  | 'sierpinski';
 
 export type GridId =
   | 'ulam'
@@ -32,9 +47,12 @@ export type GridId =
   | 'recursive';
 
 export type PaletteId = 'void' | 'aurora' | 'nebula' | 'solar' | 'ice' | 'inferno';
-export type GeometryMode = 'points' | 'lines' | 'polygons' | 'particles' | 'tubes' | 'surface' | 'mesh';
+export type GeometryMode = 'points' | 'lines' | 'polygons' | 'particles' | 'tubes' | 'surface' | 'mesh' | 'ribbon' | 'torus' | 'cylinder' | 'cone' | 'branching' | 'network' | 'trail';
 export type MaterialMode = 'basic' | 'metallic' | 'glass' | 'crystal' | 'gem' | 'holographic';
 export type EffectMode = 'bloom' | 'glow' | 'depth' | 'reflection' | 'refraction' | 'fog' | 'cinematic-lighting';
+export type LightPresetId = 'standard' | 'cinematic' | 'neon' | 'studio' | 'dark';
+export type MotionPresetId = 'ease-in-out' | 'ease-in' | 'ease-out' | 'spring' | 'bounce' | 'procedural-wave';
+export type CameraPresetId = 'orbit' | 'close-up' | 'wide-angle' | 'cinematic';
 export type RenderMode = '2d' | '3d';
 
 export type ArtworkPoint = {

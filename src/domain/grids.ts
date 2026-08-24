@@ -103,16 +103,44 @@ export function goldenSpiralPosition(value: number): { x: number; y: number } {
 }
 
 export function hilbertPosition(value: number): { x: number; y: number } {
-  const n = Math.ceil(Math.sqrt(value));
-  const x = (value % n) - n / 2;
-  const y = Math.floor(value / n) - n / 2;
-  return { x, y };
+  const order = 4;
+  const maxVal = (1 << (2 * order)) - 1;
+  const clamped = Math.min(Math.max(0, value), maxVal);
+
+  let x = 0;
+  let y = 0;
+  let t = clamped;
+  for (let s = 1; s < (1 << (2 * order)); s <<= 1) {
+    const rx = (t / 2) & 1;
+    const ry = (t & 2) ? (rx ^ 1) : rx;
+    if (ry === 0) {
+      if (rx === 1) {
+        x = s - 1 - x;
+        y = s - 1 - y;
+      }
+      const tmp = x;
+      x = y;
+      y = tmp;
+    }
+    x += s * rx;
+    y += s * ry;
+    t = Math.floor(t / 4);
+  }
+
+  const half = (1 << order) / 2;
+  return { x: x - half, y: y - half };
 }
 
 export function mortonPosition(value: number): { x: number; y: number } {
-  const x = value;
-  const y = value * 2;
-  return { x: x / 3, y: y / 3 };
+  let x = 0;
+  let y = 0;
+  let v = Math.max(0, value);
+  for (let i = 0; v > 0; i++) {
+    if (i % 2 === 0) x |= (v & 1) << (i >> 1);
+    else y |= (v & 1) << (i >> 1);
+    v >>= 1;
+  }
+  return { x: x - 16, y: y - 16 };
 }
 
 export function randomSeededPosition(value: number, seed = 7): { x: number; y: number } {
@@ -124,7 +152,7 @@ export function randomSeededPosition(value: number, seed = 7): { x: number; y: n
   };
 }
 
-export function voronoiPosition(value: number): { x: number; y: number } {
+export function radialScatterPosition(value: number): { x: number; y: number } {
   const angle = (value * 0.618) % 1;
   return {
     x: Math.cos(angle * Math.PI * 2) * (value % 16) * 0.5,
@@ -230,7 +258,7 @@ export const gridDefinitions: Record<GridId, GridDefinition> = {
     name: 'Voronoi',
     description: 'Punti distribuiti con geometrie cellulari.',
     premium: true,
-    map: voronoiPosition,
+    map: radialScatterPosition,
   },
   recursive: {
     id: 'recursive',
