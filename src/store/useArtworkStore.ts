@@ -21,6 +21,9 @@ interface ArtworkState {
   lightPreset: LightPresetId;
   motionPreset: MotionPresetId;
   cameraPreset: CameraPresetId;
+  customColors: [string, string, string];
+  lineWidth: number;
+  pointSize: number;
   setSeed: (value: number) => void;
   setSteps: (value: number) => void;
   setMode: (mode: RenderMode) => void;
@@ -33,6 +36,9 @@ interface ArtworkState {
   setLightPreset: (lightPreset: LightPresetId) => void;
   setMotionPreset: (motionPreset: MotionPresetId) => void;
   setCameraPreset: (cameraPreset: CameraPresetId) => void;
+  setCustomColor: (index: 0 | 1 | 2, color: string) => void;
+  setLineWidth: (value: number) => void;
+  setPointSize: (value: number) => void;
   randomize: () => void;
 }
 
@@ -43,12 +49,15 @@ export const useArtworkStore = create<ArtworkState>((set) => ({
   engine: 'collatz',
   grid: 'ulam',
   palette: 'aurora',
-  geometry: 'points',
+  geometry: 'lines',
   material: 'basic',
   effect: 'glow',
   lightPreset: 'standard',
   motionPreset: 'ease-in-out',
   cameraPreset: 'orbit',
+  customColors: ['#00f5d4', '#7b2ff7', '#f72585'],
+  lineWidth: 2.5,
+  pointSize: 3.0,
   setSeed: (value) => set({ seed: clampSeed(value) }),
   setSteps: (value) =>
     set({
@@ -64,5 +73,13 @@ export const useArtworkStore = create<ArtworkState>((set) => ({
   setLightPreset: (lightPreset) => set({ lightPreset }),
   setMotionPreset: (motionPreset) => set({ motionPreset }),
   setCameraPreset: (cameraPreset) => set({ cameraPreset }),
+  setCustomColor: (index, color) =>
+    set((state) => {
+      const next = [...state.customColors] as [string, string, string];
+      next[index] = color;
+      return { customColors: next };
+    }),
+  setLineWidth: (value) => set({ lineWidth: Math.max(0.5, Math.min(10, value)) }),
+  setPointSize: (value) => set({ pointSize: Math.max(0.5, Math.min(12, value)) }),
   randomize: () => set({ seed: Math.floor(Math.random() * 9000) + 10 }),
 }));

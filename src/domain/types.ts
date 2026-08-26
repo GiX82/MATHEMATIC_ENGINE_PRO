@@ -47,7 +47,7 @@ export type GridId =
   | 'recursive';
 
 export type PaletteId = 'void' | 'aurora' | 'nebula' | 'solar' | 'ice' | 'inferno';
-export type GeometryMode = 'points' | 'lines' | 'polygons' | 'particles' | 'tubes' | 'surface' | 'mesh' | 'ribbon' | 'torus' | 'cylinder' | 'cone' | 'branching' | 'network' | 'trail';
+export type GeometryMode = 'lines' | 'polygons' | 'tubes' | 'surface' | 'mesh' | 'ribbon' | 'torus' | 'cylinder' | 'cone' | 'branching' | 'network' | 'trail';
 export type MaterialMode = 'basic' | 'metallic' | 'glass' | 'crystal' | 'gem' | 'holographic';
 export type EffectMode = 'bloom' | 'glow' | 'depth' | 'reflection' | 'refraction' | 'fog' | 'cinematic-lighting';
 export type LightPresetId = 'standard' | 'cinematic' | 'neon' | 'studio' | 'dark';

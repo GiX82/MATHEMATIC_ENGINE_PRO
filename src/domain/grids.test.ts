@@ -57,6 +57,72 @@ describe('Ulam spiral', () => {
     expect(ulamPosition(0)).toEqual({ x: 0, y: 0 });
     expect(ulamPosition(-5)).toEqual({ x: 0, y: 0 });
   });
+
+  it('correct counterclockwise coordinates for values 1-42', () => {
+    const expected: Array<[number, number, number]> = [
+      [1, 0, 0],
+      [2, 1, 0],
+      [3, 1, 1],
+      [4, 0, 1],
+      [5, -1, 1],
+      [6, -1, 0],
+      [7, -1, -1],
+      [8, 0, -1],
+      [9, 1, -1],
+      [10, 2, -1],
+      [11, 2, 0],
+      [12, 2, 1],
+      [13, 2, 2],
+      [14, 1, 2],
+      [15, 0, 2],
+      [16, -1, 2],
+      [17, -2, 2],
+      [18, -2, 1],
+      [19, -2, 0],
+      [20, -2, -1],
+      [21, -2, -2],
+      [22, -1, -2],
+      [23, 0, -2],
+      [24, 1, -2],
+      [25, 2, -2],
+      [26, 3, -2],
+      [27, 3, -1],
+      [28, 3, 0],
+      [29, 3, 1],
+      [30, 3, 2],
+      [31, 3, 3],
+      [32, 2, 3],
+      [33, 1, 3],
+      [34, 0, 3],
+      [35, -1, 3],
+      [36, -2, 3],
+      [37, -3, 3],
+      [38, -3, 2],
+      [39, -3, 1],
+      [40, -3, 0],
+      [41, -3, -1],
+      [42, -3, -2],
+    ];
+
+    for (const [value, expectedX, expectedY] of expected) {
+      const pos = ulamPosition(value);
+      expect(pos).toEqual({ x: expectedX, y: expectedY });
+    }
+  });
+
+  it('value 2 is immediately right of 1', () => {
+    const pos1 = ulamPosition(1);
+    const pos2 = ulamPosition(2);
+    expect(pos2.x).toBe(pos1.x + 1);
+    expect(pos2.y).toBe(pos1.y);
+  });
+
+  it('ring boundaries are correct', () => {
+    expect(ulamPosition(9)).toEqual({ x: 1, y: -1 });
+    expect(ulamPosition(10)).toEqual({ x: 2, y: -1 });
+    expect(ulamPosition(25)).toEqual({ x: 2, y: -2 });
+    expect(ulamPosition(26)).toEqual({ x: 3, y: -2 });
+  });
 });
 
 describe('Cartesian grid', () => {

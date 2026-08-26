@@ -5,23 +5,20 @@ export function ulamPosition(value: number): { x: number; y: number } {
   if (value === 1) return { x: 0, y: 0 };
 
   const ring = Math.ceil((Math.sqrt(value) - 1) / 2);
-  const side = 2 * ring + 1;
-  const maxOnRing = side * side;
-  const distance = maxOnRing - value;
+  const firstOnRing = (2 * ring - 1) ** 2 + 1;
+  const offset = value - firstOnRing;
+  const sideLen = 2 * ring;
 
-  if (distance < side) {
-    return { x: ring, y: -ring + distance + 1 };
+  if (offset < sideLen) {
+    return { x: ring, y: -ring + 1 + offset };
   }
-
-  if (distance < 2 * side) {
-    return { x: ring - (distance - side) - 1, y: ring };
+  if (offset < 2 * sideLen) {
+    return { x: ring - 1 - (offset - sideLen), y: ring };
   }
-
-  if (distance < 3 * side) {
-    return { x: -ring, y: ring - (distance - 2 * side) - 1 };
+  if (offset < 3 * sideLen) {
+    return { x: -ring, y: ring - 1 - (offset - 2 * sideLen) };
   }
-
-  return { x: -ring + (distance - 3 * side) + 1, y: -ring };
+  return { x: -ring + 1 + (offset - 3 * sideLen), y: -ring };
 }
 
 export function cartesianPosition(value: number): { x: number; y: number } {
@@ -44,13 +41,26 @@ export function squareSpiralPosition(value: number): { x: number; y: number } {
 }
 
 export function hexagonalPosition(value: number): { x: number; y: number } {
-  const radius = Math.ceil(Math.sqrt(value / 3));
-  const x = (value % (radius * 2 + 1)) - radius;
-  const y = Math.floor(value / (radius * 2 + 1)) - radius;
-  return {
-    x: x + (Math.abs(y) % 2) * 0.5,
-    y: y * 0.86,
-  };
+  if (value <= 1) return { x: 0, y: 0 };
+  const ring = Math.ceil((Math.sqrt(12 * (value - 1) + 9) - 3) / 6);
+  const firstOnRing = 3 * ring * (ring - 1) + 2;
+  const offset = value - firstOnRing;
+  const sideLen = Math.max(1, ring);
+  const side = Math.floor(offset / sideLen);
+  const pos = offset % sideLen;
+
+  const dx = [1, 0, -1, -1, 0, 1];
+  const dy = [0, 1, 1, 0, -1, -1];
+  let cx = ring;
+  let cy = 0;
+  for (let i = 0; i < side; i++) {
+    cx += dx[i];
+    cy += dy[i];
+  }
+  cx += dx[side] * (pos / sideLen);
+  cy += dy[side] * (pos / sideLen);
+
+  return { x: cx + (Math.abs(cy) % 2) * 0.5, y: cy * 0.866 };
 }
 
 export function triangularPosition(value: number): { x: number; y: number } {
@@ -65,7 +75,7 @@ export function triangularPosition(value: number): { x: number; y: number } {
 }
 
 export function radialPosition(value: number): { x: number; y: number } {
-  const angle = value * 0.61803398875;
+  const angle = value * 2.399963229728653;
   const radius = Math.sqrt(value) * 0.35;
   return {
     x: Math.cos(angle) * radius,
@@ -94,7 +104,7 @@ export function polarSpiralPosition(value: number): { x: number; y: number } {
 }
 
 export function goldenSpiralPosition(value: number): { x: number; y: number } {
-  const angle = value * 2.399963229728653 * 0.618;
+  const angle = value * 2.399963229728653;
   const radius = Math.sqrt(value) * 0.42;
   return {
     x: Math.cos(angle) * radius,
@@ -104,15 +114,16 @@ export function goldenSpiralPosition(value: number): { x: number; y: number } {
 
 export function hilbertPosition(value: number): { x: number; y: number } {
   const order = 4;
-  const maxVal = (1 << (2 * order)) - 1;
-  const clamped = Math.min(Math.max(0, value), maxVal);
+  const n = 1 << order;
+  const maxVal = n * n - 1;
+  const d = Math.min(Math.max(0, value), maxVal);
 
   let x = 0;
   let y = 0;
-  let t = clamped;
-  for (let s = 1; s < (1 << (2 * order)); s <<= 1) {
-    const rx = (t / 2) & 1;
-    const ry = (t & 2) ? (rx ^ 1) : rx;
+  let t = d;
+  for (let s = 1; s < n; s <<= 1) {
+    const rx = 1 & (t >> 1);
+    const ry = 1 & (t ^ rx);
     if (ry === 0) {
       if (rx === 1) {
         x = s - 1 - x;
@@ -124,10 +135,10 @@ export function hilbertPosition(value: number): { x: number; y: number } {
     }
     x += s * rx;
     y += s * ry;
-    t = Math.floor(t / 4);
+    t >>= 2;
   }
 
-  const half = (1 << order) / 2;
+  const half = n >> 1;
   return { x: x - half, y: y - half };
 }
 

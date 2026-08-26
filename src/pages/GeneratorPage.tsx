@@ -1,23 +1,42 @@
 import { useRef, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useShallow } from 'zustand/react/shallow';
 import ArtCanvas, { type ArtCanvasHandle } from '../components/ArtCanvas';
 import { SlidePanel } from '../components/SlidePanel';
 import { ErrorBoundary } from '../components/ErrorBoundary';
-import { useStore } from '../store/useStore';
+import { useArtworkStore } from '../store/useArtworkStore';
 
 function GeneratorPage() {
   const { t } = useTranslation();
   const {
     seed, steps, mode, engine, grid, palette, geometry, material, effect,
     lightPreset, motionPreset, cameraPreset,
+    customColors, lineWidth, pointSize,
     setSeed, setMode, randomize,
-  } = useStore();
+  } = useArtworkStore(useShallow((s) => ({
+    seed: s.seed, steps: s.steps, mode: s.mode, engine: s.engine, grid: s.grid,
+    palette: s.palette, geometry: s.geometry, material: s.material, effect: s.effect,
+    lightPreset: s.lightPreset, motionPreset: s.motionPreset, cameraPreset: s.cameraPreset,
+    customColors: s.customColors, lineWidth: s.lineWidth, pointSize: s.pointSize,
+    setSeed: s.setSeed, setMode: s.setMode, randomize: s.randomize,
+  })));
 
   const artCanvasRef = useRef<ArtCanvasHandle | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [isAnimating] = useState(true);
+  const webglFallbackHandled = useRef(false);
+  const [webglToast, setWebglToast] = useState(false);
+
+  const handleWebGLFallback = useCallback(() => {
+    if (webglFallbackHandled.current) return;
+    webglFallbackHandled.current = true;
+    setMode('2d');
+    setWebglToast(true);
+    setTimeout(() => setWebglToast(false), 4000);
+  }, [setMode]);
 
   const handleToggleMode = useCallback(() => {
+    webglFallbackHandled.current = false;
     setMode(mode === '2d' ? '3d' : '2d');
   }, [mode, setMode]);
 
@@ -46,6 +65,10 @@ function GeneratorPage() {
             cameraPreset={cameraPreset}
             animationSpeed={1.2}
             isAnimating={isAnimating}
+            customColors={customColors}
+            lineWidth={lineWidth}
+            pointSize={pointSize}
+            onWebGLFallback={handleWebGLFallback}
           />
         </ErrorBoundary>
 
@@ -122,7 +145,16 @@ function GeneratorPage() {
       </div>
 
       {/* Slide-out panel */}
-      <SlidePanel isOpen={panelOpen} onClose={() => setPanelOpen(false)} artCanvasRef={artCanvasRef} />
+      <ErrorBoundary>
+        <SlidePanel isOpen={panelOpen} onClose={() => setPanelOpen(false)} artCanvasRef={artCanvasRef} />
+      </ErrorBoundary>
+
+      {/* WebGL fallback toast */}
+      {webglToast && (
+        <div className="fixed bottom-20 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-amber-400/30 bg-amber-500/15 px-4 py-2.5 text-xs font-medium text-amber-200 backdrop-blur-md">
+          {t('webgl_fallback')}
+        </div>
+      )}
     </div>
   );
 }

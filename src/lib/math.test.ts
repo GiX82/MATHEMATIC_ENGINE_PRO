@@ -1,6 +1,25 @@
 import { describe, it, expect } from 'vitest';
 import { buildArtwork, normalizeArtwork, hashSequence, getPalette } from './math';
 
+const ALL_ENGINES = [
+  'collatz', 'recaman', 'fibonacci', 'primes', 'prime-gaps',
+  'divisors', 'euler-phi', 'mobius', 'happy', 'digital-root',
+  'polygonal', 'catalan', 'bell', 'triangular', 'custom-recurrence',
+  'lucas', 'pell', 'perfect', 'square', 'logistic-map',
+  'lorenz', 'henon', 'rossler', 'mandelbrot', 'julia',
+  'burning-ship', 'lsystem', 'phyllotaxis', 'cellular-automata', 'sierpinski',
+] as const;
+
+const ALL_GRIDS = [
+  'ulam', 'cartesian', 'square-spiral', 'hexagonal', 'triangular',
+  'radial', 'concentric', 'polar-spiral', 'golden-spiral', 'hilbert',
+  'morton', 'random', 'voronoi', 'recursive',
+] as const;
+
+const FIELD_ENGINES = ['mandelbrot', 'julia', 'burning-ship'] as const;
+const GRID_ENGINES = ['cellular-automata', 'sierpinski'] as const;
+const TINY_ENGINES = ['mobius'] as const;
+
 describe('buildArtwork', () => {
   it('returns points and stats', () => {
     const result = buildArtwork(42, 50, 'collatz', 'ulam');
@@ -45,6 +64,89 @@ describe('buildArtwork', () => {
       expect(points.length).toBeGreaterThan(0);
     }
   });
+});
+
+describe('Pipeline integration — every engine', () => {
+  for (const engine of ALL_ENGINES) {
+    it(`${engine}: produces valid finite points`, () => {
+      const { points, stats } = buildArtwork(42, 50, engine, 'ulam');
+      expect(points.length).toBeGreaterThan(0);
+      expect(stats.length).toBeGreaterThan(0);
+      expect(Number.isFinite(stats.maxValue)).toBe(true);
+      for (const p of points) {
+        expect(Number.isFinite(p.x)).toBe(true);
+        expect(Number.isFinite(p.y)).toBe(true);
+        expect(Number.isFinite(p.z)).toBe(true);
+      }
+    });
+  }
+});
+
+describe('Pipeline routing — field engines', () => {
+  for (const engine of FIELD_ENGINES) {
+    it(`${engine}: positions use computeFieldPosition (20x15 grid)`, () => {
+      const { points } = buildArtwork(42, 80, engine, 'ulam');
+      for (const p of points) {
+        expect(p.x).toBeGreaterThanOrEqual(-2.2);
+        expect(p.x).toBeLessThanOrEqual(2.2);
+        expect(p.y).toBeGreaterThanOrEqual(-3.2);
+        expect(p.y).toBeLessThanOrEqual(3.2);
+      }
+    });
+  }
+});
+
+describe('Pipeline routing — grid engines', () => {
+  for (const engine of GRID_ENGINES) {
+    it(`${engine}: positions are integer grid coords`, () => {
+      const { points } = buildArtwork(42, 50, engine, 'ulam');
+      for (const p of points) {
+        expect(p.x % 1).toBe(0);
+        expect(p.y % 1).toBe(0);
+      }
+    });
+  }
+});
+
+describe('Pipeline routing — tiny value engines', () => {
+  for (const engine of TINY_ENGINES) {
+    it(`${engine}: radial mapping produces finite positions`, () => {
+      const { points } = buildArtwork(42, 30, engine, 'ulam');
+      for (const p of points) {
+        expect(Number.isFinite(p.x)).toBe(true);
+        expect(Number.isFinite(p.y)).toBe(true);
+      }
+    });
+  }
+});
+
+describe('Pipeline routing — coordinate pair engines', () => {
+  it('lsystem: interleaved x,y from sequence', () => {
+    const { points } = buildArtwork(42, 10, 'lsystem', 'ulam');
+    expect(points.length).toBeGreaterThan(0);
+    for (const p of points) {
+      expect(Number.isFinite(p.x)).toBe(true);
+      expect(Number.isFinite(p.y)).toBe(true);
+    }
+  });
+});
+
+describe('Pipeline — all grids with all engines (sample)', () => {
+  const sampleEngines: Array<typeof ALL_ENGINES[number]> = [
+    'collatz', 'primes', 'mandelbrot', 'cellular-automata', 'lsystem',
+  ];
+  for (const engine of sampleEngines) {
+    for (const grid of ALL_GRIDS) {
+      it(`${engine} + ${grid}: produces valid output`, () => {
+        const { points } = buildArtwork(42, 30, engine, grid);
+        expect(points.length).toBeGreaterThan(0);
+        for (const p of points) {
+          expect(Number.isFinite(p.x)).toBe(true);
+          expect(Number.isFinite(p.y)).toBe(true);
+        }
+      });
+    }
+  }
 });
 
 describe('normalizeArtwork', () => {

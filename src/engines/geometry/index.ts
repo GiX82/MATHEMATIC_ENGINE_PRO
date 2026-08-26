@@ -3,23 +3,13 @@ import { registry } from '../../core/registry';
 
 const geometryEngines: IGeometryEngine[] = [
   {
-    id: 'points', name: 'Punti', description: 'Punti discreti con linea di connessione.', category: 'geometry',
-    geometryType: 'primitive', premium: false, tags: ['points', 'basic'],
-    params: [],
-  },
-  {
-    id: 'lines', name: 'Linee', description: 'Linee continue lungo la traiettoria.', category: 'geometry',
-    geometryType: 'primitive', premium: false, tags: ['lines', 'continuous'],
+    id: 'lines', name: 'Linee', description: 'Linee 3D con spessore lungo la traiettoria.', category: 'geometry',
+    geometryType: 'three-d', premium: false, tags: ['lines', 'continuous', '3d'],
     params: [],
   },
   {
     id: 'polygons', name: 'Poligoni', description: 'Poligoni e formati strutturati.', category: 'geometry',
     geometryType: 'primitive', premium: true, tags: ['polygons', 'structured'],
-    params: [],
-  },
-  {
-    id: 'particles', name: 'Particelle', description: 'Particelle sparse luminose.', category: 'geometry',
-    geometryType: 'particle', premium: true, tags: ['particles', 'scattered'],
     params: [],
   },
   {

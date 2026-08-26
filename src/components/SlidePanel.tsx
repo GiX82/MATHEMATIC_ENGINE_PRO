@@ -1,8 +1,10 @@
 import { useEffect, useRef, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useStore } from '../store/useStore';
+import { useShallow } from 'zustand/react/shallow';
+import { useArtworkStore } from '../store/useArtworkStore';
+import { useUserStore } from '../store/useUserStore';
 import { canAccessFeature, type AccessFeature } from '../domain/access';
-import { geometryCatalog, materialCatalog, effectCatalog, cinematicPresets } from '../domain/geometry';
+import { geometryCatalog, materialCatalog, effectCatalog } from '../domain/geometry';
 import {
   engineNames,
   gridNames,
@@ -82,11 +84,27 @@ export function SlidePanel({ isOpen, onClose, artCanvasRef }: SlidePanelProps) {
 
   const {
     steps, mode, engine, grid, palette, geometry, material, effect,
-    premium, lightPreset, motionPreset, cameraPreset,
+    lightPreset, motionPreset, cameraPreset,
+    customColors, lineWidth, pointSize,
     setSteps, setMode, setEngine, setGrid, setPalette, setGeometry,
     setMaterial, setEffect, setLightPreset, setMotionPreset, setCameraPreset,
-    randomize, togglePremium,
-  } = useStore();
+    setCustomColor, setLineWidth, setPointSize,
+    randomize,
+  } = useArtworkStore(useShallow((s) => ({
+    steps: s.steps, mode: s.mode, engine: s.engine, grid: s.grid,
+    palette: s.palette, geometry: s.geometry, material: s.material, effect: s.effect,
+    lightPreset: s.lightPreset, motionPreset: s.motionPreset, cameraPreset: s.cameraPreset,
+    customColors: s.customColors, lineWidth: s.lineWidth, pointSize: s.pointSize,
+    setSteps: s.setSteps, setMode: s.setMode, setEngine: s.setEngine, setGrid: s.setGrid,
+    setPalette: s.setPalette, setGeometry: s.setGeometry, setMaterial: s.setMaterial,
+    setEffect: s.setEffect, setLightPreset: s.setLightPreset, setMotionPreset: s.setMotionPreset,
+    setCameraPreset: s.setCameraPreset, setCustomColor: s.setCustomColor,
+    setLineWidth: s.setLineWidth, setPointSize: s.setPointSize,
+    randomize: s.randomize,
+  })));
+  const { premium, togglePremium } = useUserStore(useShallow((s) => ({
+    premium: s.premium, togglePremium: s.togglePremium,
+  })));
 
   useEffect(() => {
     if (!isOpen) return;
@@ -146,29 +164,72 @@ export function SlidePanel({ isOpen, onClose, artCanvasRef }: SlidePanelProps) {
             </div>
           </PanelSection>
 
-          {/* Presets */}
-          <PanelSection title={t('presets')}>
-            <div className="grid gap-1.5">
-              {Object.entries(cinematicPresets).map(([key, preset]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => {
-                    setEngine(preset.config.engine as GeneratorEngine);
-                    setGrid(preset.config.grid as SpatialGrid);
-                    setPalette(preset.config.palette as PaletteKey);
-                    setGeometry(preset.config.geometry as GeometryMode);
-                    setMaterial(preset.config.material as MaterialMode);
-                    setEffect(preset.config.effect as EffectMode);
-                  }}
-                  className="rounded-lg border border-white/5 bg-white/3 p-2.5 text-left transition hover:border-cyan-400/20 hover:bg-cyan-500/5"
-                >
-                  <div className="text-xs font-medium text-white">{preset.label}</div>
-                  <div className="mt-0.5 text-[10px] text-zinc-500">{preset.description}</div>
-                </button>
-              ))}
+          {/* Colors */}
+          <PanelSection title={t('colors')}>
+            <div className="grid gap-2">
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] text-zinc-500 w-12">Colore 1</label>
+                <input
+                  type="color"
+                  value={customColors[0]}
+                  onChange={(e) => setCustomColor(0, e.target.value)}
+                  className="h-7 w-full cursor-pointer rounded border border-white/10 bg-transparent"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] text-zinc-500 w-12">Colore 2</label>
+                <input
+                  type="color"
+                  value={customColors[1]}
+                  onChange={(e) => setCustomColor(1, e.target.value)}
+                  className="h-7 w-full cursor-pointer rounded border border-white/10 bg-transparent"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] text-zinc-500 w-12">Colore 3</label>
+                <input
+                  type="color"
+                  value={customColors[2]}
+                  onChange={(e) => setCustomColor(2, e.target.value)}
+                  className="h-7 w-full cursor-pointer rounded border border-white/10 bg-transparent"
+                />
+              </div>
             </div>
           </PanelSection>
+
+          {/* 2D Controls */}
+          {mode === '2d' && (
+          <PanelSection title="Controlli 2D">
+            <div className="grid gap-2">
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] text-zinc-500 w-20">Spessore</label>
+                <input
+                  type="range"
+                  min="0.5"
+                  max="10"
+                  step="0.5"
+                  value={lineWidth}
+                  onChange={(e) => setLineWidth(parseFloat(e.target.value))}
+                  className="flex-1 accent-cyan-400"
+                />
+                <span className="text-[10px] text-zinc-400 w-6 text-right">{lineWidth}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] text-zinc-500 w-20">Punti</label>
+                <input
+                  type="range"
+                  min="0.5"
+                  max="12"
+                  step="0.5"
+                  value={pointSize}
+                  onChange={(e) => setPointSize(parseFloat(e.target.value))}
+                  className="flex-1 accent-cyan-400"
+                />
+                <span className="text-[10px] text-zinc-400 w-6 text-right">{pointSize}</span>
+              </div>
+            </div>
+          </PanelSection>
+          )}
 
           {/* Engine */}
           <PanelSection title={t('engine')}>
@@ -233,11 +294,13 @@ export function SlidePanel({ isOpen, onClose, artCanvasRef }: SlidePanelProps) {
           {/* Geometry */}
           <PanelSection title={t('geometry')}>
             <OptionGrid
-              items={Object.entries(geometryCatalog).map(([key, value]) => ({
-                key,
-                label: value.label,
-                locked: value.premium,
-              }))}
+              items={Object.entries(geometryCatalog)
+                .filter(([key]) => mode === '3d' || ['lines', 'polygons'].includes(key))
+                .map(([key, value]) => ({
+                  key,
+                  label: value.label,
+                  locked: value.premium,
+                }))}
               value={geometry}
               onChange={(k) => setGeometry(k as GeometryMode)}
               feature="geometry"
@@ -246,6 +309,7 @@ export function SlidePanel({ isOpen, onClose, artCanvasRef }: SlidePanelProps) {
           </PanelSection>
 
           {/* Material */}
+          {mode === '3d' && (
           <PanelSection title={t('material')}>
             <OptionGrid
               items={Object.entries(materialCatalog).map(([key, value]) => ({
@@ -259,6 +323,7 @@ export function SlidePanel({ isOpen, onClose, artCanvasRef }: SlidePanelProps) {
               premium={premium}
             />
           </PanelSection>
+          )}
 
           {/* Effect */}
           <PanelSection title={t('effect')}>

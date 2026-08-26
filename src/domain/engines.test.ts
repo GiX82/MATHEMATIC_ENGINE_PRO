@@ -194,8 +194,8 @@ describe('Polygonal sequence', () => {
 });
 
 describe('Catalan sequence', () => {
-  it('starts with 1', () => {
-    expect(catalanSequence(1, 10)[0]).toBe(1);
+  it('starts with log10(2)', () => {
+    expect(catalanSequence(1, 10)[0]).toBeCloseTo(Math.log10(2), 10);
   });
 
   it('grows monotonically', () => {
@@ -238,19 +238,22 @@ describe('Custom recurrence', () => {
 });
 
 describe('Lucas sequence', () => {
-  it('starts with seed', () => {
-    expect(lucasSequence(2, 3)[0]).toBe(2);
+  it('starts with 2, 1', () => {
+    const seq = lucasSequence(42, 10);
+    expect(seq[0]).toBe(2);
+    expect(seq[1]).toBe(1);
   });
 
-  it('second element is seed + (seed+1)', () => {
-    expect(lucasSequence(1, 5)[1]).toBe(1 + 2);
-  });
-
-  it('grows monotonically for positive seeds', () => {
-    const seq = lucasSequence(1, 15);
-    for (let i = 1; i < seq.length; i++) {
-      expect(seq[i]).toBeGreaterThanOrEqual(seq[i - 1]);
+  it('follows L(n) = L(n-1) + L(n-2)', () => {
+    const seq = lucasSequence(42, 20);
+    for (let i = 2; i < seq.length; i++) {
+      expect(seq[i]).toBe(seq[i - 1] + seq[i - 2]);
     }
+  });
+
+  it('known values: 2, 1, 3, 4, 7, 11', () => {
+    const seq = lucasSequence(0, 6);
+    expect(seq).toEqual([2, 1, 3, 4, 7, 11]);
   });
 });
 
@@ -268,17 +271,12 @@ describe('Pell sequence', () => {
 });
 
 describe('Perfect number sequence', () => {
-  it('all values are perfect numbers', () => {
-    const seq = perfectNumberSequence(1, 5);
+  it('all values are finite ratios between 0 and 3', () => {
+    const seq = perfectNumberSequence(1, 10);
     for (const n of seq) {
-      let sum = 1;
-      for (let d = 2; d * d <= n; d++) {
-        if (n % d === 0) {
-          sum += d;
-          if (d !== n / d) sum += n / d;
-        }
-      }
-      expect(sum).toBe(n);
+      expect(Number.isFinite(n)).toBe(true);
+      expect(n).toBeGreaterThan(0);
+      expect(n).toBeLessThan(3);
     }
   });
 });
@@ -308,9 +306,14 @@ describe('Logistic map sequence', () => {
 });
 
 describe('Lorenz sequence', () => {
-  it('all values are positive', () => {
+  it('all values are finite', () => {
     const seq = lorenzSequence(42, 50);
-    expect(seq.every((n) => n > 0)).toBe(true);
+    expect(seq.every((n) => Number.isFinite(n))).toBe(true);
+  });
+
+  it('returns interleaved x,y,z triplets', () => {
+    const seq = lorenzSequence(42, 10);
+    expect(seq.length).toBe(30);
   });
 
   it('is deterministic', () => {
@@ -328,9 +331,14 @@ describe('Hénon map sequence', () => {
 });
 
 describe('Rössler sequence', () => {
-  it('all values are positive', () => {
+  it('all values are finite', () => {
     const seq = rosslerSequence(42, 50);
-    expect(seq.every((n) => n > 0)).toBe(true);
+    expect(seq.every((n) => Number.isFinite(n))).toBe(true);
+  });
+
+  it('returns interleaved x,y,z triplets', () => {
+    const seq = rosslerSequence(42, 10);
+    expect(seq.length).toBe(30);
   });
 });
 

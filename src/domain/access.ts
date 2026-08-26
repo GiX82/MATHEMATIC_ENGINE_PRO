@@ -7,7 +7,7 @@ export const freeAccess = {
   grids: ['ulam'] as const,
   modes: ['2d'] as const,
   palettes: ['void', 'aurora', 'nebula'] as const,
-  geometries: ['points', 'lines'] as const,
+  geometries: ['lines'] as const,
   materials: ['basic'] as const,
   effects: ['glow', 'fog'] as const,
 } as const;

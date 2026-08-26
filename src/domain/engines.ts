@@ -212,11 +212,11 @@ export function digitalRootSequence(seed: number, maxIterations = 300): number[]
 export function polygonalSequence(seed: number, maxIterations = 300): number[] {
   const safeSeed = clampSeed(seed);
   const sequence: number[] = [];
-  const k = 6;
+  const k = (safeSeed % 8) + 3;
 
   for (let index = 0; index < maxIterations; index += 1) {
-    const value = safeSeed + index;
-    sequence.push((k * value * (value - 1)) / 2 + value);
+    const n = index + 1;
+    sequence.push(((k - 2) * n * (n - 1)) / 2 + n);
   }
 
   return sequence;
@@ -225,14 +225,15 @@ export function polygonalSequence(seed: number, maxIterations = 300): number[] {
 export function catalanSequence(seed: number, maxIterations = 200): number[] {
   const safeSeed = clampSeed(seed);
   const sequence: number[] = [];
-  let previous = safeSeed || 1;
+  const offset = safeSeed % 20;
 
-  for (let index = 0; index < maxIterations; index += 1) {
-    const value = previous * (4 * index + 2) / (index + 2);
-    // I numeri di Catalan crescono esponenzialmente: stop prima dell'overflow.
+  let value = 1;
+  for (let index = 0; index < offset + maxIterations; index += 1) {
+    if (index >= offset) {
+      sequence.push(Math.log10(value + 1));
+    }
+    value = value * (4 * index + 2) / (index + 2);
     if (!Number.isFinite(value) || value > Number.MAX_SAFE_INTEGER) break;
-    sequence.push(Math.floor(value));
-    previous = value;
   }
 
   return sequence;
@@ -301,11 +302,9 @@ export function customRecurrenceSequence(seed: number, maxIterations = 200): num
 }
 
 export function lucasSequence(seed: number, maxIterations = 200): number[] {
-  const safeSeed = clampSeed(seed);
-  const sequence = [safeSeed];
-  let a = safeSeed;
-  let b = safeSeed + 1;
-  for (let i = 1; i < maxIterations; i++) {
+  const sequence: number[] = [2, 1];
+  let a = 2, b = 1;
+  for (let i = 2; i < maxIterations; i++) {
     const next = a + b;
     sequence.push(next);
     a = b;
@@ -333,19 +332,18 @@ export function pellSequence(seed: number, maxIterations = 200): number[] {
 export function perfectNumberSequence(seed: number, maxIterations = 200): number[] {
   const safeSeed = clampSeed(seed);
   const sequence: number[] = [];
-  let candidate = Math.max(2, safeSeed);
-  while (sequence.length < maxIterations) {
+  const start = Math.max(2, (safeSeed % 50) * 2);
+
+  for (let n = start; sequence.length < maxIterations; n += 2) {
     let sum = 1;
-    const limit = Math.floor(Math.sqrt(candidate));
+    const limit = Math.floor(Math.sqrt(n));
     for (let d = 2; d <= limit; d++) {
-      if (candidate % d === 0) {
+      if (n % d === 0) {
         sum += d;
-        if (d !== candidate / d) sum += candidate / d;
+        if (d !== n / d) sum += n / d;
       }
     }
-    if (sum === candidate && candidate > 1) sequence.push(candidate);
-    candidate++;
-    if (candidate > 100000) break;
+    sequence.push(sum / n);
   }
   return sequence;
 }
@@ -389,7 +387,7 @@ export function lorenzSequence(seed: number, maxIterations = 500): number[] {
     x += dx;
     y += dy;
     z += dz;
-    sequence.push(Math.sqrt(x * x + y * y + z * z) * 100);
+    sequence.push(x, y, z);
   }
   return sequence;
 }
@@ -427,24 +425,21 @@ export function rosslerSequence(seed: number, maxIterations = 500): number[] {
     x += dx;
     y += dy;
     z += dz;
-    sequence.push(Math.sqrt(x * x + y * y + z * z) * 100);
+    sequence.push(x, y, z);
   }
   return sequence;
 }
 
 export function mandelbrotSequence(seed: number, maxIterations = 300): number[] {
-  const safeSeed = clampSeed(seed);
   const sequence: number[] = [];
-  const cx = (safeSeed % 400) / 100 - 2;
-  const cy = (safeSeed % 200) / 100 - 1;
   for (let i = 0; i < maxIterations; i++) {
-    const px = (i % 20 - 10) / 5;
-    const py = (Math.floor(i / 20) - 15) / 5;
+    const cx = (i % 20 - 10) / 5;
+    const cy = (Math.floor(i / 20) - 15) / 5;
     let zx = 0, zy = 0;
     let iteration = 0;
     while (zx * zx + zy * zy < 4 && iteration < 50) {
-      const tmp = zx * zx - zy * zy + cx + px * 0.1;
-      zy = 2 * zx * zy + cy + py * 0.1;
+      const tmp = zx * zx - zy * zy + cx;
+      zy = 2 * zx * zy + cy;
       zx = tmp;
       iteration++;
     }
@@ -474,18 +469,15 @@ export function juliaSequence(seed: number, maxIterations = 300): number[] {
 }
 
 export function burningShipSequence(seed: number, maxIterations = 300): number[] {
-  const safeSeed = clampSeed(seed);
   const sequence: number[] = [];
-  const cx = (safeSeed % 400) / 100 - 2;
-  const cy = (safeSeed % 200) / 100 - 2;
   for (let i = 0; i < maxIterations; i++) {
+    const cx = (i % 20 - 10) / 5;
+    const cy = (Math.floor(i / 20) - 15) / 5;
     let zx = 0, zy = 0;
-    const px = (i % 20 - 10) / 5;
-    const py = (Math.floor(i / 20) - 15) / 5;
     let iteration = 0;
     while (zx * zx + zy * zy < 4 && iteration < 50) {
-      const tmp = zx * zx - zy * zy + cx + px * 0.1;
-      zy = Math.abs(2 * zx * zy) + cy + py * 0.1;
+      const tmp = zx * zx - zy * zy + cx;
+      zy = Math.abs(2 * zx * zy) + cy;
       zx = Math.abs(tmp);
       iteration++;
     }

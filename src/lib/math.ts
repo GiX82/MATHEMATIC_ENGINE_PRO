@@ -57,6 +57,32 @@ export function hashSequence(sequence: number[]): string {
   return (`00000000${(hash >>> 0).toString(16)}`).slice(-8);
 }
 
+const FIELD_ENGINES: ReadonlySet<EngineId> = new Set(['mandelbrot', 'julia', 'burning-ship']);
+const GRID_ENGINES: ReadonlySet<EngineId> = new Set(['cellular-automata', 'sierpinski']);
+const TINY_VALUE_ENGINES: ReadonlySet<EngineId> = new Set(['mobius']);
+const DIGITAL_ROOT_ENGINES: ReadonlySet<EngineId> = new Set(['digital-root']);
+const COORDINATE_PAIR_ENGINES: ReadonlySet<EngineId> = new Set(['lsystem']);
+const COORDINATE_TRIPLET_ENGINES: ReadonlySet<EngineId> = new Set(['lorenz', 'rossler']);
+
+function computeFieldPosition(index: number, _value: number): { x: number; y: number } {
+  const px = (index % 20 - 10) / 5;
+  const py = (Math.floor(index / 20) - 15) / 5;
+  return { x: px, y: py };
+}
+
+function computeGridPosition(index: number, value: number, engine: EngineId): { x: number; y: number } {
+  if (engine === 'cellular-automata') {
+    const width = 64;
+    const col = index % width;
+    const row = Math.floor(index / width);
+    return { x: col, y: row };
+  }
+  const size = Math.min(64, Math.ceil(Math.sqrt(index + 1)));
+  const col = index % size;
+  const row = Math.floor(index / size);
+  return { x: col, y: row };
+}
+
 export function buildArtwork(seed: number, maxSteps = 200, engine: GeneratorEngine = 'collatz', grid: SpatialGrid = 'ulam') {
   const sequence = generateSequence(seed, engine, maxSteps);
 
@@ -67,7 +93,42 @@ export function buildArtwork(seed: number, maxSteps = 200, engine: GeneratorEngi
 
   const safeMax = Math.max(1, maxValue);
   const points = sequence.map((value, index) => {
-    const pos = gridPosition(value, grid);
+    let pos: { x: number; y: number };
+    if (FIELD_ENGINES.has(engine)) {
+      pos = computeFieldPosition(index, value);
+    } else if (GRID_ENGINES.has(engine)) {
+      pos = computeGridPosition(index, value, engine);
+    } else if (TINY_VALUE_ENGINES.has(engine)) {
+      const angle = ((value + 1) / 3) * Math.PI * 2 + index * 0.05;
+      const radius = Math.sqrt(index + 1) * 0.3;
+      pos = { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
+    } else if (DIGITAL_ROOT_ENGINES.has(engine)) {
+      const sector = (value - 1) / 9;
+      const angle = sector * Math.PI * 2 + index * 0.02;
+      const radius = Math.sqrt(index + 1) * 0.3;
+      pos = { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
+    } else if (COORDINATE_PAIR_ENGINES.has(engine)) {
+      if (index % 2 === 0 && index + 1 < sequence.length) {
+        pos = { x: value, y: sequence[index + 1] };
+      } else if (index % 2 === 1) {
+        pos = { x: sequence[index - 1], y: value };
+      } else {
+        pos = gridPosition(value, grid);
+      }
+    } else if (COORDINATE_TRIPLET_ENGINES.has(engine)) {
+      const tripletIndex = index % 3;
+      if (tripletIndex === 0 && index + 2 < sequence.length) {
+        pos = { x: value, y: sequence[index + 1] };
+      } else if (tripletIndex === 1 && index + 1 < sequence.length) {
+        pos = { x: sequence[index - 1], y: sequence[index + 1] };
+      } else if (tripletIndex === 2) {
+        pos = { x: sequence[index - 2], y: sequence[index - 1] };
+      } else {
+        pos = gridPosition(value, grid);
+      }
+    } else {
+      pos = gridPosition(value, grid);
+    }
     return {
       index,
       value,
