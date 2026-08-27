@@ -1,9 +1,10 @@
-﻿import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
+﻿import { Suspense, forwardRef, lazy, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
 import type { CameraPresetId, EffectMode, GeometryMode, LightPresetId, MaterialMode, MotionPresetId } from '../domain/types';
 import { isWebGLAvailable } from '../lib/webgl-check';
 import type { GeneratorEngine, PaletteKey, SpatialGrid } from '../lib/math';
-import { Renderer2D } from './Renderer2D';
-import { Renderer3D } from './Renderer3D';
+
+const Renderer2D = lazy(() => import('./Renderer2D').then(m => ({ default: m.Renderer2D })));
+const Renderer3D = lazy(() => import('./Renderer3D').then(m => ({ default: m.Renderer3D })));
 
 interface ArtCanvasProps {
   seed: number;
@@ -23,6 +24,10 @@ interface ArtCanvasProps {
   customColors?: [string, string, string];
   lineWidth?: number;
   pointSize?: number;
+  shadowIntensity?: number;
+  shadowDirection?: number;
+  shadowSoftness?: number;
+  lightAngle?: number;
   onWebGLFallback?: () => void;
 }
 
@@ -30,7 +35,7 @@ export type ArtCanvasHandle = {
   getCanvas: () => HTMLCanvasElement | null;
 };
 
-const ArtCanvasComponent = forwardRef<ArtCanvasHandle, ArtCanvasProps>(function ArtCanvas({ seed, steps, mode, palette, engine = 'collatz', grid = 'ulam', geometry = 'lines', material = 'basic', effect = 'glow', lightPreset = 'standard', motionPreset = 'ease-in-out', cameraPreset = 'orbit', animationSpeed = 1, isAnimating = false, customColors, lineWidth, pointSize, onWebGLFallback }, ref) {
+const ArtCanvasComponent = forwardRef<ArtCanvasHandle, ArtCanvasProps>(function ArtCanvas({ seed, steps, mode, palette, engine = 'collatz', grid = 'ulam', geometry = 'lines', material = 'basic', effect = 'glow', lightPreset = 'standard', motionPreset = 'ease-in-out', cameraPreset = 'orbit', animationSpeed = 1, isAnimating = false, customColors, lineWidth, pointSize, shadowIntensity = 4, shadowDirection = 135, shadowSoftness = 2, lightAngle = 45, onWebGLFallback }, ref) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const webglOk = useMemo(() => isWebGLAvailable(), []);
 
@@ -52,42 +57,50 @@ const ArtCanvasComponent = forwardRef<ArtCanvasHandle, ArtCanvasProps>(function 
 
   if (use3D) {
     return (
-      <Renderer3D
+      <Suspense fallback={<div className="flex h-full w-full items-center justify-center text-xs text-zinc-500">Loading 3D…</div>}>
+        <Renderer3D
+          seed={seed}
+          steps={steps}
+          palette={palette}
+          engine={engine}
+          grid={grid}
+          geometry={geometry}
+          material={material}
+          effect={effect}
+          lightPreset={lightPreset}
+          motionPreset={motionPreset}
+          cameraPreset={cameraPreset}
+          animationSpeed={animationSpeed}
+          isAnimating={isAnimating}
+          customColors={customColors}
+          onCanvasReady={handleCanvasReady}
+        />
+      </Suspense>
+    );
+  }
+
+  return (
+    <Suspense fallback={<div className="flex h-full w-full items-center justify-center text-xs text-zinc-500">Loading 2D…</div>}>
+      <Renderer2D
         seed={seed}
         steps={steps}
         palette={palette}
         engine={engine}
         grid={grid}
         geometry={geometry}
-        material={material}
         effect={effect}
-        lightPreset={lightPreset}
-        motionPreset={motionPreset}
-        cameraPreset={cameraPreset}
         animationSpeed={animationSpeed}
         isAnimating={isAnimating}
         customColors={customColors}
+        lineWidth={lineWidth}
+        pointSize={pointSize}
+        shadowIntensity={shadowIntensity}
+        shadowDirection={shadowDirection}
+        shadowSoftness={shadowSoftness}
+        lightAngle={lightAngle}
         onCanvasReady={handleCanvasReady}
       />
-    );
-  }
-
-  return (
-    <Renderer2D
-      seed={seed}
-      steps={steps}
-      palette={palette}
-      engine={engine}
-      grid={grid}
-      geometry={geometry}
-      effect={effect}
-      animationSpeed={animationSpeed}
-      isAnimating={isAnimating}
-      customColors={customColors}
-      lineWidth={lineWidth}
-      pointSize={pointSize}
-      onCanvasReady={handleCanvasReady}
-    />
+    </Suspense>
   );
 });
 

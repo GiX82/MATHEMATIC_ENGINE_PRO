@@ -43,7 +43,7 @@ export function createProgressiveTubeMaterial(
     roughness: (props.roughness as number) ?? 0.08,
     metalness: (props.metalness as number) ?? 0.7,
     clearcoat: (props.clearcoat as number) ?? 1.0,
-    clearcoatRoughness: 0.05,
+    clearcoatRoughness: (props.clearcoatRoughness as number) ?? 0.05,
     transparent: true,
     opacity: 1.0,
     side: THREE.DoubleSide,
@@ -124,7 +124,7 @@ export function createProgressiveTubeMaterial(
     material.roughness = (p.roughness as number) ?? 0.08;
     material.metalness = (p.metalness as number) ?? 0.7;
     material.clearcoat = (p.clearcoat as number) ?? 1.0;
-    material.clearcoatRoughness = 0.05;
+    material.clearcoatRoughness = (p.clearcoatRoughness as number) ?? 0.05;
     uniforms.uColorStart.value.set(c.start);
     uniforms.uColorEnd.value.set(c.end);
     uniforms.uColorGlow.value.set(c.glow);

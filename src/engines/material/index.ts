@@ -4,6 +4,7 @@ import { registry } from '../../core/registry';
 const materialParams: ParamDefinition[] = [
   { id: 'emissiveIntensity', label: 'Emissione', type: 'number', min: 0, max: 3, step: 0.1, default: 0.9 },
   { id: 'roughness', label: 'Roughness', type: 'number', min: 0, max: 1, step: 0.05, default: 0.15 },
+  { id: 'clearcoatRoughness', label: 'Clearcoat Rugosità', type: 'number', min: 0, max: 1, step: 0.05, default: 0.05 },
 ];
 
 const materialEngines: IMaterialEngine[] = [
@@ -17,7 +18,7 @@ const materialEngines: IMaterialEngine[] = [
     id: 'metallic', name: 'Metallico', description: 'Superficie metallica riflettente.', category: 'material',
     premium: true, tags: ['metallic', 'reflective'],
     params: [...materialParams],
-    threeMaterialProps: { color: '#b8b8b8', roughness: 0.25, metalness: 0.8, clearcoat: 0.7, emissiveIntensity: 0.5 },
+    threeMaterialProps: { color: '#b8b8b8', roughness: 0.25, metalness: 0.8, clearcoat: 0.7, clearcoatRoughness: 0.1, emissiveIntensity: 0.5 },
   },
   {
     id: 'glass', name: 'Vetro', description: 'Vetro trasparente e rifrattivo.', category: 'material',

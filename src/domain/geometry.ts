@@ -25,6 +25,7 @@ export const materialCatalog = {
 } as const;
 
 export const effectCatalog = {
+  neutral: { id: 'neutral', label: 'Neutro', premium: false },
   bloom: { id: 'bloom', label: 'Fioritura', premium: true },
   glow: { id: 'glow', label: 'Bagliore', premium: false },
   depth: { id: 'depth', label: 'Profondità', premium: true },
@@ -40,7 +41,7 @@ export type EffectId = keyof typeof effectCatalog;
 
 export const defaultGeometry: GeometryMode = 'lines';
 export const defaultMaterial: MaterialMode = 'basic';
-export const defaultEffect: EffectMode = 'glow';
+export const defaultEffect: EffectMode = 'neutral';
 
 export const cinematicPresets = {
   'energy-storm': {

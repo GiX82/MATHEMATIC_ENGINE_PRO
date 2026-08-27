@@ -14,6 +14,8 @@ import type { EffectMode } from '../domain/types';
 export interface PostProcessingSetup {
   composer: EffectComposer;
   bloom: UnrealBloomPass;
+  grainPass: ShaderPass | null;
+  refractionPass: ShaderPass | null;
   resize: (width: number, height: number) => void;
   dispose: () => void;
 }
@@ -115,18 +117,83 @@ const FilmGrainShader = {
   `,
 };
 
+// ── Reflection Shader (mirror + fade) ───────────────────────────────────────
+
+const ReflectionShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uAmount: { value: 0.15 },
+  },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    uniform float uAmount;
+    varying vec2 vUv;
+
+    void main() {
+      vec4 color = texture2D(tDiffuse, vUv);
+      vec2 mirrorUv = vec2(1.0 - vUv.x, vUv.y);
+      vec4 mirror = texture2D(tDiffuse, mirrorUv);
+      float edge = smoothstep(0.0, 0.4, vUv.x) * smoothstep(0.0, 0.4, 1.0 - vUv.x);
+      gl_FragColor = mix(color, mirror, uAmount * edge);
+    }
+  `,
+};
+
+// ── Refraction Shader (chromatic distortion) ────────────────────────────────
+
+const RefractionShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uAmount: { value: 0.012 },
+    uTime: { value: 0 },
+  },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    uniform float uAmount;
+    uniform float uTime;
+    varying vec2 vUv;
+
+    void main() {
+      vec2 center = vUv - 0.5;
+      float dist = length(center);
+      float wave = sin(dist * 20.0 - uTime * 2.0) * uAmount * dist;
+      vec2 offset = normalize(center) * wave;
+      float r = texture2D(tDiffuse, vUv + offset).r;
+      float g = texture2D(tDiffuse, vUv).g;
+      float b = texture2D(tDiffuse, vUv - offset).b;
+      gl_FragColor = vec4(r, g, b, 1.0);
+    }
+  `,
+};
+
 // ── Effect-specific bloom parameters ────────────────────────────────────────
 
 function getBloomParams(effect: EffectMode) {
   switch (effect) {
     case 'bloom':
-      return { strength: 1.2, radius: 0.6, threshold: 0.15 };
+      return { strength: 0.45, radius: 0.4, threshold: 0.72 };
     case 'glow':
-      return { strength: 0.5, radius: 0.3, threshold: 0.3 };
+      return { strength: 0.3, radius: 0.25, threshold: 0.78 };
     case 'cinematic-lighting':
-      return { strength: 0.9, radius: 0.5, threshold: 0.2 };
+      return { strength: 0.5, radius: 0.45, threshold: 0.65 };
+    case 'depth':
+      return { strength: 0.2, radius: 0.3, threshold: 0.8 };
     default:
-      return { strength: 0.7, radius: 0.4, threshold: 0.25 };
+      return { strength: 0.25, radius: 0.3, threshold: 0.75 };
   }
 }
 
@@ -135,7 +202,10 @@ export function setupPostProcessing(
   scene: THREE.Scene,
   camera: THREE.Camera,
   effect: EffectMode = 'glow',
-): PostProcessingSetup {
+): PostProcessingSetup | null {
+  // Neutral = no post-processing at all
+  if (effect === 'neutral') return null;
+
   const size = renderer.getSize(new THREE.Vector2());
   const composer = new EffectComposer(renderer);
 
@@ -153,27 +223,44 @@ export function setupPostProcessing(
   );
   composer.addPass(bloom);
 
-  // Chromatic aberration — only for bloom and cinematic-lighting
+  // Effect-specific additional passes
   let chromaticPass: ShaderPass | null = null;
-  if (effect === 'bloom' || effect === 'cinematic-lighting') {
+  let grainPass: ShaderPass | null = null;
+  let reflectionPass: ShaderPass | null = null;
+  let refractionPass: ShaderPass | null = null;
+
+  if (effect === 'reflection') {
+    reflectionPass = new ShaderPass(ReflectionShader);
+    composer.addPass(reflectionPass);
+  }
+
+  if (effect === 'refraction') {
+    refractionPass = new ShaderPass(RefractionShader);
+    composer.addPass(refractionPass);
+  }
+
+  // Chromatic aberration — bloom, cinematic-lighting, depth
+  if (effect === 'bloom' || effect === 'cinematic-lighting' || effect === 'depth') {
     chromaticPass = new ShaderPass(ChromaticAberrationShader);
-    chromaticPass.uniforms.uAmount.value = effect === 'cinematic-lighting' ? 0.005 : 0.002;
+    chromaticPass.uniforms.uAmount.value = effect === 'cinematic-lighting' ? 0.002 : 0.0015;
     composer.addPass(chromaticPass);
   }
 
-  // Film grain — for bloom, cinematic-lighting, depth
-  let grainPass: ShaderPass | null = null;
+  // Film grain — bloom, cinematic-lighting, depth
   if (effect === 'bloom' || effect === 'cinematic-lighting' || effect === 'depth') {
     grainPass = new ShaderPass(FilmGrainShader);
-    grainPass.uniforms.uIntensity.value = effect === 'cinematic-lighting' ? 0.08 : 0.04;
+    grainPass.uniforms.uIntensity.value = effect === 'cinematic-lighting' ? 0.035 : 0.03;
     composer.addPass(grainPass);
   }
 
-  // Vignette — always present, darkness varies
-  const vignettePass = new ShaderPass(VignetteShader);
-  vignettePass.uniforms.uDarkness.value = effect === 'cinematic-lighting' ? 0.9 : effect === 'depth' ? 0.8 : 0.6;
-  vignettePass.uniforms.uOffset.value = effect === 'depth' ? 0.2 : 0.35;
-  composer.addPass(vignettePass);
+  // Vignette — present on all effects except fog
+  let vignettePass: ShaderPass | null = null;
+  if (effect !== 'fog') {
+    vignettePass = new ShaderPass(VignetteShader);
+    vignettePass.uniforms.uDarkness.value = effect === 'cinematic-lighting' ? 0.5 : effect === 'depth' ? 0.6 : 0.4;
+    vignettePass.uniforms.uOffset.value = effect === 'depth' ? 0.25 : 0.4;
+    composer.addPass(vignettePass);
+  }
 
   // Output pass — handles tone mapping (ACES Filmic) + color space
   const outputPass = new OutputPass();
@@ -188,10 +275,12 @@ export function setupPostProcessing(
     bloom.dispose();
     if (chromaticPass) chromaticPass.dispose();
     if (grainPass) grainPass.dispose();
-    vignettePass.dispose();
+    if (reflectionPass) reflectionPass.dispose();
+    if (refractionPass) refractionPass.dispose();
+    if (vignettePass) vignettePass.dispose();
     outputPass.dispose();
     composer.dispose();
   };
 
-  return { composer, bloom, resize, dispose };
+  return { composer, bloom, grainPass, refractionPass, resize, dispose };
 }

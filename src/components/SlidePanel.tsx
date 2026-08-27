@@ -85,21 +85,28 @@ export function SlidePanel({ isOpen, onClose, artCanvasRef }: SlidePanelProps) {
   const {
     steps, mode, engine, grid, palette, geometry, material, effect,
     lightPreset, motionPreset, cameraPreset,
-    customColors, lineWidth, pointSize,
+    customColors, lineWidth, pointSize, shadowIntensity, shadowDirection, shadowSoftness, lightAngle, animationDuration,
     setSteps, setMode, setEngine, setGrid, setPalette, setGeometry,
     setMaterial, setEffect, setLightPreset, setMotionPreset, setCameraPreset,
     setCustomColor, setLineWidth, setPointSize,
+    setShadowIntensity, setShadowDirection, setShadowSoftness, setLightAngle,
+    setAnimationDuration,
     randomize,
   } = useArtworkStore(useShallow((s) => ({
     steps: s.steps, mode: s.mode, engine: s.engine, grid: s.grid,
     palette: s.palette, geometry: s.geometry, material: s.material, effect: s.effect,
     lightPreset: s.lightPreset, motionPreset: s.motionPreset, cameraPreset: s.cameraPreset,
     customColors: s.customColors, lineWidth: s.lineWidth, pointSize: s.pointSize,
+    shadowIntensity: s.shadowIntensity, shadowDirection: s.shadowDirection, shadowSoftness: s.shadowSoftness,
+    lightAngle: s.lightAngle, animationDuration: s.animationDuration,
     setSteps: s.setSteps, setMode: s.setMode, setEngine: s.setEngine, setGrid: s.setGrid,
     setPalette: s.setPalette, setGeometry: s.setGeometry, setMaterial: s.setMaterial,
     setEffect: s.setEffect, setLightPreset: s.setLightPreset, setMotionPreset: s.setMotionPreset,
     setCameraPreset: s.setCameraPreset, setCustomColor: s.setCustomColor,
     setLineWidth: s.setLineWidth, setPointSize: s.setPointSize,
+    setShadowIntensity: s.setShadowIntensity, setShadowDirection: s.setShadowDirection,
+    setShadowSoftness: s.setShadowSoftness, setLightAngle: s.setLightAngle,
+    setAnimationDuration: s.setAnimationDuration,
     randomize: s.randomize,
   })));
   const { premium, togglePremium } = useUserStore(useShallow((s) => ({
@@ -197,6 +204,22 @@ export function SlidePanel({ isOpen, onClose, artCanvasRef }: SlidePanelProps) {
             </div>
           </PanelSection>
 
+          {/* Animation Duration */}
+          <PanelSection title="Durata animazione">
+            <div className="flex items-center gap-2">
+              <input
+                type="range"
+                min="1"
+                max="15"
+                step="1"
+                value={animationDuration}
+                onChange={(e) => setAnimationDuration(parseInt(e.target.value, 10))}
+                className="flex-1 accent-cyan-400"
+              />
+              <span className="text-[10px] text-zinc-400 w-10 text-right">{animationDuration}s</span>
+            </div>
+          </PanelSection>
+
           {/* 2D Controls */}
           {mode === '2d' && (
           <PanelSection title="Controlli 2D">
@@ -206,7 +229,7 @@ export function SlidePanel({ isOpen, onClose, artCanvasRef }: SlidePanelProps) {
                 <input
                   type="range"
                   min="0.5"
-                  max="10"
+                  max="15"
                   step="0.5"
                   value={lineWidth}
                   onChange={(e) => setLineWidth(parseFloat(e.target.value))}
@@ -226,6 +249,58 @@ export function SlidePanel({ isOpen, onClose, artCanvasRef }: SlidePanelProps) {
                   className="flex-1 accent-cyan-400"
                 />
                 <span className="text-[10px] text-zinc-400 w-6 text-right">{pointSize}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] text-zinc-500 w-20">Ombra</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="10"
+                  step="1"
+                  value={shadowIntensity}
+                  onChange={(e) => setShadowIntensity(parseInt(e.target.value, 10))}
+                  className="flex-1 accent-cyan-400"
+                />
+                <span className="text-[10px] text-zinc-400 w-6 text-right">{shadowIntensity}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] text-zinc-500 w-20">Direzione</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="360"
+                  step="15"
+                  value={shadowDirection}
+                  onChange={(e) => setShadowDirection(parseInt(e.target.value, 10))}
+                  className="flex-1 accent-cyan-400"
+                />
+                <span className="text-[10px] text-zinc-400 w-6 text-right">{shadowDirection}°</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] text-zinc-500 w-20">Morbidezza</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="3"
+                  step="1"
+                  value={shadowSoftness}
+                  onChange={(e) => setShadowSoftness(parseInt(e.target.value, 10))}
+                  className="flex-1 accent-cyan-400"
+                />
+                <span className="text-[10px] text-zinc-400 w-6 text-right">{shadowSoftness}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] text-zinc-500 w-20">Angolo luce</label>
+                <input
+                  type="range"
+                  min="15"
+                  max="90"
+                  step="5"
+                  value={lightAngle}
+                  onChange={(e) => setLightAngle(parseInt(e.target.value, 10))}
+                  className="flex-1 accent-cyan-400"
+                />
+                <span className="text-[10px] text-zinc-400 w-6 text-right">{lightAngle}°</span>
               </div>
             </div>
           </PanelSection>

@@ -25,6 +25,7 @@ function createMaterial(config: SceneConfig, overrides: Partial<THREE.MeshPhysic
     roughness: (props.roughness as number) ?? 0.15,
     metalness: (props.metalness as number) ?? 0.35,
     clearcoat: (props.clearcoat as number) ?? 0.7,
+    clearcoatRoughness: (props.clearcoatRoughness as number) ?? 0.05,
     transparent: (props.transparent as boolean) ?? false,
     opacity: (props.opacity as number) ?? 0.82,
     transmission: (props.transmission as number) ?? 0,

@@ -99,7 +99,7 @@ function addLightsToScene(scene: THREE.Scene, presetId: LightPresetId, palette: 
     : paletteDef;
 
   if (lights.length === 0) {
-    const ambient = new THREE.AmbientLight(0xffffff, 0.4);
+    const ambient = new THREE.AmbientLight(new THREE.Color(colors.start).multiplyScalar(0.6), 0.4);
     scene.add(ambient);
     const key = new THREE.DirectionalLight(new THREE.Color(colors.start), 0.9);
     key.position.set(5, 4, 6);
@@ -153,7 +153,7 @@ function mulberry32Fast(seed: number) {
   };
 }
 
-export function Renderer3D({ seed, steps, palette, engine, grid, geometry, material, effect, lightPreset, motionPreset: _motionPreset, cameraPreset: _cameraPreset, animationSpeed, isAnimating, customColors, onCanvasReady }: Renderer3DProps) {
+export function Renderer3D({ seed, steps, palette, engine, grid, geometry, material, effect, lightPreset, motionPreset, cameraPreset: _cameraPreset, animationSpeed, isAnimating, customColors, onCanvasReady }: Renderer3DProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -169,10 +169,13 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
   const curveRef = useRef<THREE.CatmullRomCurve3 | null>(null);
   const sphereRef = useRef<THREE.Mesh | null>(null);
   const sphereMatRef = useRef<THREE.ShaderMaterial | null>(null);
+  const trailRef = useRef<THREE.Line | null>(null);
   const drawablesRef = useRef<THREE.Object3D[]>([]);
   const postProcessingRef = useRef<PostProcessingSetup | null>(null);
   const maxValRef = useRef(0);
   const valuesRef = useRef<number[]>([]);
+  const finalCamPosRef = useRef(new THREE.Vector3(0, 0.25, 7.5));
+  const bboxCenterRef = useRef(new THREE.Vector3(0, 0, 0));
 
   const lightHelpersRef = useRef<THREE.Light[]>([]);
 
@@ -359,12 +362,12 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
     starfieldRef.current = starField;
 
     // GPU particles
-    const gpuParticles = createGPUParticles(surfaceCurve, palette, seed, 800);
+    const gpuParticles = createGPUParticles(surfaceCurve, palette, seed, 800, customColors);
     root.add(gpuParticles.points);
     gpuParticlesRef.current = gpuParticles;
 
     // Ambient dust
-    const ambientDust = createAmbientDust(palette, seed, 400);
+    const ambientDust = createAmbientDust(palette, seed, 400, customColors);
     root.add(ambientDust.points);
     ambientDustRef.current = ambientDust;
 
@@ -414,6 +417,23 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
     root.add(sphere);
     sphereRef.current = sphere;
     sphereMatRef.current = sphereMat;
+
+    // Trail — glowing line behind the tracer
+    const trailLen = 40;
+    const trailPositions = new Float32Array(trailLen * 3);
+    const trailGeo = new THREE.BufferGeometry();
+    trailGeo.setAttribute('position', new THREE.Float32BufferAttribute(trailPositions, 3));
+    const trailMat = new THREE.LineBasicMaterial({
+      color: new THREE.Color(pal.glow),
+      transparent: true,
+      opacity: 0.7,
+      linewidth: 2,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const trail = new THREE.Line(trailGeo, trailMat);
+    root.add(trail);
+    trailRef.current = trail;
 
     // Line thickness — proportional to sphere for visual harmony
     const lineRadius = sphereRadius * 0.12;
@@ -478,12 +498,50 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
 
     drawablesRef.current = drawables;
 
+    // ── Compute final camera position from bounding box ──────────────────
+    // Only use artwork drawables, NOT starfield/particles/dust/trail
+    const bbox = new THREE.Box3();
+    for (const d of drawables) bbox.expandByObject(d);
+    if (sphere) bbox.expandByObject(sphere);
+    const bboxSize = new THREE.Vector3();
+    const bboxCenter = new THREE.Vector3();
+    bbox.getSize(bboxSize);
+    bbox.getCenter(bboxCenter);
+
+    const perspCam = camera as THREE.PerspectiveCamera;
+    const aspect = perspCam.aspect;
+    const vFov = perspCam.fov * (Math.PI / 180);
+    const elevAngle = 20 * (Math.PI / 180);
+    const cosElev = Math.cos(elevAngle);
+    const sinElev = Math.sin(elevAngle);
+
+    // Project bbox onto camera view plane to get visible extents
+    const projV = bboxSize.y * cosElev + bboxSize.z * sinElev;
+    const projH = bboxSize.x;
+
+    // Minimum distance to fit within FOV at target occupancy (80%)
+    const targetOcc = 0.8;
+    const distVert = (projV * 0.5) / (Math.tan(vFov * 0.5) * targetOcc);
+    const hFov = 2 * Math.atan(Math.tan(vFov * 0.5) * aspect);
+    const distHoriz = (projH * 0.5) / (Math.tan(hFov * 0.5) * targetOcc);
+
+    const finalDist = Math.max(distVert, distHoriz);
+    finalCamPosRef.current.set(
+      bboxCenter.x,
+      bboxCenter.y + sinElev * finalDist,
+      bboxCenter.z + cosElev * finalDist,
+    );
+    bboxCenterRef.current.copy(bboxCenter);
+
+    // Debug occupancy
+    const occV = ((projV / (2 * finalDist * Math.tan(vFov * 0.5))) * 100).toFixed(1);
+    const occH = ((projH / (2 * finalDist * Math.tan(hFov * 0.5))) * 100).toFixed(1);
+    console.log(`[Camera] bbox ${bboxSize.x.toFixed(2)}x${bboxSize.y.toFixed(2)}x${bboxSize.z.toFixed(2)} | dist=${finalDist.toFixed(2)} | occ V:${occV}% H:${occH}%`);
+
     // Post-processing
     postProcessingRef.current?.dispose();
     postProcessingRef.current = null;
-    if (effect === 'bloom' || effect === 'glow' || effect === 'cinematic-lighting' || effect === 'depth') {
-      postProcessingRef.current = setupPostProcessing(renderer, scene, camera, effect);
-    }
+    postProcessingRef.current = setupPostProcessing(renderer, scene, camera, effect);
 
     return () => {
       disposeThreeObject(starfieldRef.current);
@@ -494,6 +552,8 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
       ambientDustRef.current = null;
       progressiveTubeRef.current?.dispose();
       progressiveTubeRef.current = null;
+      disposeThreeObject(trailRef.current);
+      trailRef.current = null;
       curveRef.current = null;
     };
   }, [seed, steps, engine, grid, geometry, palette, material, effect, customColors]);
@@ -579,13 +639,49 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
 
     let disposed = false;
     let animationFrame = 0;
-    const drawDuration = 10000;
+    const drawDuration = animationSpeed * 1000;
     let drawStartTime = -1;
-    let prevTime = -1;
 
     // Pre-allocated Vector3 to avoid GC pressure in RAF
     const _tmpDir = new THREE.Vector3();
     const _tmpLookAt = new THREE.Vector3();
+    const _trailPos = new THREE.Vector3();
+
+    // ── Easing functions per motionPreset ────────────────────────────────────
+    const applyEasing = (t: number, preset: MotionPresetId): number => {
+      switch (preset) {
+        case 'ease-in':
+          return t * t;
+        case 'ease-out':
+          return 1 - (1 - t) * (1 - t);
+        case 'spring': {
+          const c4 = (2 * Math.PI) / 3;
+          return t === 0 ? 0 : t === 1 ? 1
+            : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1;
+        }
+        case 'bounce': {
+          const n1 = 7.5625;
+          const d1 = 2.75;
+          if (t < 1 / d1) return n1 * t * t;
+          if (t < 2 / d1) return n1 * (t -= 1.5 / d1) * t + 0.75;
+          if (t < 2.5 / d1) return n1 * (t -= 2.25 / d1) * t + 0.9375;
+          return n1 * (t -= 2.625 / d1) * t + 0.984375;
+        }
+        case 'procedural-wave':
+          return t + Math.sin(t * Math.PI * 4) * 0.03 * (1 - t);
+        case 'ease-in-out':
+        default:
+          return t < 0.5
+            ? 4 * t * t * t
+            : 1 - Math.pow(-2 * t + 2, 3) / 2;
+      }
+    };
+
+    // ── Smoothstep helper ────────────────────────────────────────────────────
+    const smoothstep = (edge0: number, edge1: number, x: number): number => {
+      const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+      return t * t * (3 - 2 * t);
+    };
 
     const tick = (time: number) => {
       if (disposed) return;
@@ -594,10 +690,7 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
       const drawElapsed = time - drawStartTime;
       const drawProgress = Math.min(1, drawElapsed / drawDuration);
 
-      // Smooth cubic ease-in-out — fluid, no stuttering
-      const easedProgress = drawProgress < 0.5
-        ? 4 * drawProgress * drawProgress * drawProgress
-        : 1 - Math.pow(-2 * drawProgress + 2, 3) / 2;
+      const easedProgress = applyEasing(drawProgress, motionPreset);
 
       const isRevealing = drawProgress < 1;
       const revealT = isRevealing ? easedProgress : 1;
@@ -610,11 +703,12 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
         sphereMat.uniforms.uTime.value = time * 0.001;
         const sphereFade = Math.min(1, easedProgress * 4);
         sphereMat.uniforms.uOpacity.value = sphereFade;
-        // Organic breathing
-        const breathe = 1 + Math.sin(time * 0.0008) * 0.06;
-        const morph = 1 + Math.sin(time * 0.0012) * 0.03;
+        // Organic breathing — slows down as sphere approaches end
+        const breathFade = 1 - easedProgress * 0.5;
+        const breathe = 1 + Math.sin(time * 0.0008) * 0.06 * breathFade;
+        const morph = 1 + Math.sin(time * 0.0012) * 0.03 * breathFade;
         sphere.scale.set(breathe * morph, breathe / morph, breathe);
-        // Move sphere along the curve
+        // Move sphere along the curve — smooth deceleration at end
         const t = Math.min(revealT * 0.999, 1);
         const pos = curve.getPointAt(t);
         sphere.position.copy(pos);
@@ -625,6 +719,24 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
           _tmpLookAt.copy(pos).add(_tmpDir);
           sphere.lookAt(_tmpLookAt);
         }
+      }
+
+      // ── Trail — glowing line behind the tracer ─────────────────────────
+      const trail = trailRef.current;
+      if (curve && trail) {
+        const trailLen = 40;
+        const trailSpan = 0.06;
+        const headT = Math.min(revealT * 0.999, 1);
+        const posAttr = trail.geometry.attributes.position as THREE.BufferAttribute;
+        for (let i = 0; i < trailLen; i++) {
+          const frac = i / trailLen;
+          const trailT = Math.max(0, headT - trailSpan * (1 - frac));
+          const p = curve.getPointAt(trailT);
+          posAttr.setXYZ(i, p.x, p.y, p.z);
+        }
+        posAttr.needsUpdate = true;
+        const trailMat = trail.material as THREE.LineBasicMaterial;
+        trailMat.opacity = isRevealing ? 0.6 : Math.max(0, trailMat.opacity - 0.02);
       }
 
       // ── Progressive drawRange — geometry grows behind the sphere ──────
@@ -643,37 +755,71 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
       progressiveTubeRef.current?.setProgress(easedProgress);
       progressiveTubeRef.current?.setTime(time * 0.001);
 
-      // ── Root rotation: gentle continuous spin ──────────────────────────
-      root.rotation.y = time * 0.00012;
-      root.rotation.x = Math.sin(time * 0.00008) * 0.04;
+      // ── Root rotation: gentle spin during reveal, stop after ───────────────
+      if (isRevealing) {
+        root.rotation.y = drawProgress * Math.PI * 2;
+        root.rotation.x = Math.sin(drawProgress * Math.PI) * 0.06;
+      }
+      // After reveal: root stays at its last rotation (no more spin)
 
       gpuParticlesRef.current?.update(time * 0.0008);
       ambientDustRef.current?.update(time * 0.0005);
       if (starfieldRef.current) starfieldRef.current.rotation.z = time * 0.00002;
       root.scale.setScalar(effect === 'cinematic-lighting' ? 1.05 : 1);
 
-      // ── Camera: 360° orbit, always in frame, 90% fill, frontal end ───
-      const dt = prevTime >= 0 ? (time - prevTime) : 16;
-      prevTime = time;
+      // ── Camera: 3-phase cinematic drone path ──────────────────────────
+
       if (isRevealing) {
-        const orbitAngle = revealT * Math.PI * 2;
-        const minDist = 3.8;
-        const maxDist = 7.0;
-        const dist = minDist + (maxDist - minDist) * easedProgress;
-        camera.position.x = Math.sin(orbitAngle) * dist;
-        camera.position.z = Math.cos(orbitAngle) * dist;
-        camera.position.y = 0.4 + Math.sin(orbitAngle * 0.5) * 0.12;
+        const p = drawProgress;
+        const finalPos = finalCamPosRef.current;
+        let camX: number;
+        let camY: number;
+        let camZ: number;
+
+        if (p < 0.3) {
+          // Phase 1: Close-up, slightly off-center for drama
+          const t1 = p / 0.3;
+          const e1 = smoothstep(0, 1, t1);
+          camX = 1.2 * (1 - e1) + 0.6 * e1;
+          camY = 1.0 * (1 - e1) + 0.6 * e1;
+          camZ = 3.0 * (1 - e1) + 4.5 * e1;
+        } else if (p < 0.7) {
+          // Phase 2: Pull back, center artwork
+          const t2 = (p - 0.3) / 0.4;
+          const e2 = smoothstep(0, 1, t2);
+          camX = 0.6 * (1 - e2) + finalPos.x * e2;
+          camY = 0.6 * (1 - e2) + finalPos.y * e2;
+          camZ = 4.5 * (1 - e2) + finalPos.z * e2;
+        } else {
+          // Phase 3: settle from Phase 2 end → finalPos (continuous)
+          const t3 = (p - 0.7) / 0.3;
+          const e3 = smoothstep(0, 1, t3);
+          camX = finalPos.x * (1 - e3) + finalPos.x * e3;
+          camY = finalPos.y * (1 - e3) + finalPos.y * e3;
+          camZ = finalPos.z * (1 - e3) + finalPos.z * e3;
+        }
+
+        camera.position.set(camX, camY, camZ);
       } else {
-        const lerpFactor = 1 - Math.exp(-dt * 0.003);
-        camera.position.x += (0 - camera.position.x) * lerpFactor;
-        camera.position.y += (0.3 - camera.position.y) * lerpFactor;
-        camera.position.z += (6 - camera.position.z) * lerpFactor;
+        // After reveal: smooth 1.5s ease-in-out transition to final position
+        const timeSinceReveal = (time - drawStartTime) - drawDuration;
+        const transitionDuration = 1500;
+        const t = Math.min(1, timeSinceReveal / transitionDuration);
+        const ease = t < 0.5
+          ? 4 * t * t * t
+          : 1 - Math.pow(-2 * t + 2, 3) / 2;
+        const finalPos = finalCamPosRef.current;
+        camera.position.lerpVectors(camera.position, finalPos, ease);
       }
-      camera.lookAt(0, 0, 0);
+
+      camera.lookAt(bboxCenterRef.current.x, bboxCenterRef.current.y, bboxCenterRef.current.z);
 
       try {
-        if (postProcessingRef.current) {
-          postProcessingRef.current.composer.render();
+        const pp = postProcessingRef.current;
+        if (pp) {
+          if (pp.grainPass) pp.grainPass.uniforms.uTime.value = time * 0.001;
+          if (pp.refractionPass) pp.refractionPass.uniforms.uTime.value = time * 0.001;
+          pp.composer.render();
         } else {
           renderer.render(scene, camera);
         }
@@ -691,7 +837,7 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
       disposed = true;
       window.cancelAnimationFrame(animationFrame);
     };
-  }, [seed, effect]);
+  }, [seed, effect, motionPreset, animationSpeed]);
 
   return (
     <div

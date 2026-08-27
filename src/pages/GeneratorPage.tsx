@@ -11,13 +11,15 @@ function GeneratorPage() {
   const {
     seed, steps, mode, engine, grid, palette, geometry, material, effect,
     lightPreset, motionPreset, cameraPreset,
-    customColors, lineWidth, pointSize,
+    customColors, lineWidth, pointSize, shadowIntensity, shadowDirection, shadowSoftness, lightAngle, animationDuration,
     setSeed, setMode, randomize,
   } = useArtworkStore(useShallow((s) => ({
     seed: s.seed, steps: s.steps, mode: s.mode, engine: s.engine, grid: s.grid,
     palette: s.palette, geometry: s.geometry, material: s.material, effect: s.effect,
     lightPreset: s.lightPreset, motionPreset: s.motionPreset, cameraPreset: s.cameraPreset,
     customColors: s.customColors, lineWidth: s.lineWidth, pointSize: s.pointSize,
+    shadowIntensity: s.shadowIntensity, shadowDirection: s.shadowDirection, shadowSoftness: s.shadowSoftness,
+    lightAngle: s.lightAngle, animationDuration: s.animationDuration,
     setSeed: s.setSeed, setMode: s.setMode, randomize: s.randomize,
   })));
 
@@ -63,11 +65,15 @@ function GeneratorPage() {
             lightPreset={lightPreset}
             motionPreset={motionPreset}
             cameraPreset={cameraPreset}
-            animationSpeed={1.2}
+            animationSpeed={animationDuration}
             isAnimating={isAnimating}
             customColors={customColors}
             lineWidth={lineWidth}
             pointSize={pointSize}
+            shadowIntensity={shadowIntensity}
+            shadowDirection={shadowDirection}
+            shadowSoftness={shadowSoftness}
+            lightAngle={lightAngle}
             onWebGLFallback={handleWebGLFallback}
           />
         </ErrorBoundary>

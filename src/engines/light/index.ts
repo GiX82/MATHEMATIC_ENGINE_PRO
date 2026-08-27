@@ -7,7 +7,7 @@ const lightEngines: ILightEngine[] = [
     premium: false, tags: ['standard', 'default'],
     params: [],
     lights: [
-      { type: 'ambient', color: '#ffffff', intensity: 0.85 },
+      { type: 'ambient', color: '#e8e0f0', intensity: 0.5 },
       { type: 'directional', color: '#8ae6ff', intensity: 1.6, position: [5, 4, 6] },
       { type: 'directional', color: '#ff7bd5', intensity: 0.8, position: [-5, -2, 4] },
     ],

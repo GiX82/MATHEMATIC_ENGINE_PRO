@@ -24,6 +24,11 @@ interface ArtworkState {
   customColors: [string, string, string];
   lineWidth: number;
   pointSize: number;
+  shadowIntensity: number;
+  shadowDirection: number;
+  shadowSoftness: number;
+  lightAngle: number;
+  animationDuration: number;
   setSeed: (value: number) => void;
   setSteps: (value: number) => void;
   setMode: (mode: RenderMode) => void;
@@ -39,6 +44,11 @@ interface ArtworkState {
   setCustomColor: (index: 0 | 1 | 2, color: string) => void;
   setLineWidth: (value: number) => void;
   setPointSize: (value: number) => void;
+  setShadowIntensity: (value: number) => void;
+  setShadowDirection: (value: number) => void;
+  setShadowSoftness: (value: number) => void;
+  setLightAngle: (value: number) => void;
+  setAnimationDuration: (value: number) => void;
   randomize: () => void;
 }
 
@@ -51,13 +61,18 @@ export const useArtworkStore = create<ArtworkState>((set) => ({
   palette: 'aurora',
   geometry: 'lines',
   material: 'basic',
-  effect: 'glow',
+  effect: 'neutral',
   lightPreset: 'standard',
   motionPreset: 'ease-in-out',
   cameraPreset: 'orbit',
   customColors: ['#00f5d4', '#7b2ff7', '#f72585'],
   lineWidth: 2.5,
   pointSize: 3.0,
+  shadowIntensity: 4,
+  shadowDirection: 135,
+  shadowSoftness: 2,
+  lightAngle: 45,
+  animationDuration: 10,
   setSeed: (value) => set({ seed: clampSeed(value) }),
   setSteps: (value) =>
     set({
@@ -81,5 +96,10 @@ export const useArtworkStore = create<ArtworkState>((set) => ({
     }),
   setLineWidth: (value) => set({ lineWidth: Math.max(0.5, Math.min(10, value)) }),
   setPointSize: (value) => set({ pointSize: Math.max(0.5, Math.min(12, value)) }),
+  setShadowIntensity: (value) => set({ shadowIntensity: Math.max(0, Math.min(10, Math.round(value))) }),
+  setShadowDirection: (value) => set({ shadowDirection: ((value % 360) + 360) % 360 }),
+  setShadowSoftness: (value) => set({ shadowSoftness: Math.max(0, Math.min(3, Math.round(value))) }),
+  setLightAngle: (value) => set({ lightAngle: Math.max(15, Math.min(90, Math.round(value))) }),
+  setAnimationDuration: (value) => set({ animationDuration: Math.max(1, Math.min(15, Math.round(value))) }),
   randomize: () => set({ seed: Math.floor(Math.random() * 9000) + 10 }),
 }));

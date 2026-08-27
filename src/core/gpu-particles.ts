@@ -9,6 +9,15 @@ import { getPalette } from '../lib/math';
 import type { PaletteKey } from '../lib/math';
 import { mulberry32 } from './seed';
 
+export type ResolvedColors = { start: string; end: string; glow: string; bg: string; accent: string };
+
+function resolveColors(palette: PaletteKey, customColors?: [string, string, string]): ResolvedColors {
+  const base = getPalette(palette);
+  return customColors
+    ? { ...base, start: customColors[0], glow: customColors[1], end: customColors[2] }
+    : base;
+}
+
 export interface GPUParticleSystem {
   points: THREE.Points;
   update: (time: number) => void;
@@ -20,8 +29,9 @@ export function createGPUParticles(
   palette: PaletteKey,
   seed: number,
   count = 800,
+  customColors?: [string, string, string],
 ): GPUParticleSystem {
-  const colors = getPalette(palette);
+  const colors = resolveColors(palette, customColors);
   const rand = mulberry32(seed);
 
   const positions = new Float32Array(count * 3);
@@ -94,8 +104,9 @@ export function createAmbientDust(
   palette: PaletteKey,
   seed: number,
   count = 400,
+  customColors?: [string, string, string],
 ): GPUParticleSystem {
-  const colors = getPalette(palette);
+  const colors = resolveColors(palette, customColors);
   const rand = mulberry32(seed);
 
   const positions = new Float32Array(count * 3);
