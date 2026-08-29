@@ -128,6 +128,15 @@ export function createProgressiveTubeMaterial(
     uniforms.uColorStart.value.set(c.start);
     uniforms.uColorEnd.value.set(c.end);
     uniforms.uColorGlow.value.set(c.glow);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const shader = material.userData.shader;
+    if (shader && typeof shader === 'object' && 'uniforms' in shader) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      const su = shader.uniforms as Record<string, { value: THREE.Color }>;
+      if (su.uColorStart) su.uColorStart.value.set(c.start);
+      if (su.uColorEnd) su.uColorEnd.value.set(c.end);
+      if (su.uColorGlow) su.uColorGlow.value.set(c.glow);
+    }
   };
 
   const dispose = () => {
@@ -135,24 +144,4 @@ export function createProgressiveTubeMaterial(
   };
 
   return { material, setProgress, setTime, setMaterial, dispose };
-}
-
-// ── Glowing Tube (simpler variant without onBeforeCompile) ──────────────────
-
-export function createGlowTubeMaterial(
-  palette: PaletteKey,
-): THREE.MeshPhysicalMaterial {
-  const colors = getPalette(palette);
-  return new THREE.MeshPhysicalMaterial({
-    color: new THREE.Color(colors.start),
-    emissive: new THREE.Color(colors.glow),
-    emissiveIntensity: 1.0,
-    roughness: 0.05,
-    metalness: 0.8,
-    clearcoat: 1.0,
-    clearcoatRoughness: 0.05,
-    transparent: true,
-    opacity: 0.9,
-    side: THREE.DoubleSide,
-  });
 }

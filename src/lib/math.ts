@@ -9,38 +9,6 @@ export type PaletteKey = PaletteId;
 
 export { clampSeed, generateSequence, engineDefinitions, gridDefinitions, getPaletteDefinition };
 
-export function collatzSequence(seed: number, maxIterations = 1200) {
-  return engineDefinitions.collatz.generate(seed, maxIterations);
-}
-
-export function recamanSequence(seed: number, maxIterations = 1200) {
-  return engineDefinitions.recaman.generate(seed, maxIterations);
-}
-
-export function fibonacciSequence(seed: number, maxIterations = 1200) {
-  return engineDefinitions.fibonacci.generate(seed, maxIterations);
-}
-
-export function primeSequence(seed: number, maxIterations = 500) {
-  return engineDefinitions.primes.generate(seed, maxIterations);
-}
-
-export function ulamPosition(value: number): { x: number; y: number } {
-  return gridDefinitions.ulam.map(value);
-}
-
-export function cartesianPosition(value: number): { x: number; y: number } {
-  return gridDefinitions.cartesian.map(value);
-}
-
-export function polarPosition(value: number): { x: number; y: number } {
-  return gridDefinitions['polar-spiral'].map(value);
-}
-
-export function hexPosition(value: number): { x: number; y: number } {
-  return gridDefinitions.hexagonal.map(value);
-}
-
 export function gridPosition(value: number, grid: SpatialGrid = 'ulam'): { x: number; y: number } {
   return mapValueToGrid(value, grid);
 }

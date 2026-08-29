@@ -4,7 +4,7 @@ export const sphereVertexShader = /* glsl */ `
   uniform float uProgress;
   uniform vec3 uMoveDir;
   varying vec3 vNormal;
-  varying vec3 vPosition;
+  varying vec3 vWorldPosition;
   varying float vDisplacement;
   varying float vProgress;
 
@@ -76,7 +76,7 @@ export const sphereVertexShader = /* glsl */ `
 
   void main() {
     vNormal = normalize(normalMatrix * normal);
-    vPosition = position;
+    vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
     vProgress = uProgress;
 
     float slowTime = uTime * 0.15;
@@ -86,9 +86,9 @@ export const sphereVertexShader = /* glsl */ `
 
     vDisplacement = combined;
 
-    // Liquid deformation: stretch along movement direction
+    // Liquid deformation: stretch along local Z (aligned with movement via lookAt)
     vec3 deformed = position;
-    float stretch = dot(normalize(uMoveDir + 0.001), normalize(position));
+    float stretch = dot(vec3(0.0, 0.0, 1.0), normalize(position));
     float liquidBulge = max(0.0, stretch) * 0.25;
     float liquidSqueeze = 1.0 - max(0.0, -stretch) * 0.15;
     deformed.x *= liquidSqueeze;
@@ -108,14 +108,14 @@ export const sphereFragmentShader = /* glsl */ `
   uniform float uOpacity;
   uniform float uProgress;
   varying vec3 vNormal;
-  varying vec3 vPosition;
+  varying vec3 vWorldPosition;
   varying float vDisplacement;
   varying float vProgress;
 
   void main() {
     float slowTime = uTime * 0.15;
 
-    vec3 viewDir = normalize(cameraPosition - vPosition);
+    vec3 viewDir = normalize(cameraPosition - vWorldPosition);
     float fresnel = pow(1.0 - max(dot(vNormal, viewDir), 0.0), 2.5);
 
     float pattern = vDisplacement * 0.5 + 0.5;

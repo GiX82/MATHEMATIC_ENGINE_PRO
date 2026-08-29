@@ -180,12 +180,6 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
 
   const lightHelpersRef = useRef<THREE.Light[]>([]);
 
-  const animRef = useRef({ speed: animationSpeed, animating: isAnimating });
-  useEffect(() => {
-    animRef.current.speed = animationSpeed;
-    animRef.current.animating = isAnimating;
-  }, [animationSpeed, isAnimating]);
-
   // ── EFFECT 1: One-time renderer + scene setup ────────────────────────────
   useEffect(() => {
     const container = containerRef.current;
@@ -726,6 +720,10 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
 
     const tick = (time: number) => {
       if (disposed) return;
+      if (!isAnimating) {
+        animationFrame = window.requestAnimationFrame(tick);
+        return;
+      }
 
       if (drawStartTime < 0) drawStartTime = time;
       const drawElapsed = time - drawStartTime;
@@ -899,11 +897,15 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
         const timeSinceReveal = (time - drawStartTime) - drawDuration;
         const transitionDuration = 1500;
         const t = Math.min(1, timeSinceReveal / transitionDuration);
-        const ease = t < 0.5
-          ? 4 * t * t * t
-          : 1 - Math.pow(-2 * t + 2, 3) / 2;
         const finalPos = finalCamPosRef.current;
-        camera.position.lerp(finalPos, ease);
+        if (t >= 1) {
+          camera.position.copy(finalPos);
+        } else {
+          const ease = t < 0.5
+            ? 4 * t * t * t
+            : 1 - Math.pow(-2 * t + 2, 3) / 2;
+          camera.position.lerpVectors(camera.position, finalPos, ease);
+        }
       }
 
       camera.lookAt(bboxCenterRef.current.x, bboxCenterRef.current.y, bboxCenterRef.current.z);
@@ -931,7 +933,7 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
       disposed = true;
       window.cancelAnimationFrame(animationFrame);
     };
-  }, [seed, effect, motionPreset, animationSpeed]);
+  }, [seed, effect, motionPreset, animationSpeed, isAnimating]);
 
   return (
     <div

@@ -45,7 +45,7 @@ const VignetteShader = {
       vec4 color = texture2D(tDiffuse, vUv);
       vec2 center = vUv - 0.5;
       float dist = length(center);
-      float vig = smoothstep(0.6, uOffset, dist);
+      float vig = smoothstep(uOffset, 0.6, dist);
       color.rgb *= 1.0 - vig * uDarkness;
       gl_FragColor = color;
     }
