@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, type ReactNode } from 'react';
+import { Suspense, lazy, useEffect, useState, type ReactNode } from 'react';
 import { BrowserRouter, Link, Route, Routes, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useGalleryStore } from './store/useGalleryStore';
@@ -8,6 +8,17 @@ const GeneratorPage = lazy(() => import('./pages/GeneratorPage'));
 
 function Layout({ children, hideHeader = false }: { children: ReactNode; hideHeader?: boolean }) {
   const { t } = useTranslation();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (mobileMenuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [mobileMenuOpen]);
+
   return (
     <div className="min-h-screen bg-me-dark-01 text-me-text">
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top,_rgba(31,205,255,0.10),_transparent_28%),radial-gradient(circle_at_80%_0%,_rgba(168,85,247,0.14),_transparent_32%)]" />
@@ -24,6 +35,7 @@ function Layout({ children, hideHeader = false }: { children: ReactNode; hideHea
               </div>
             </div>
 
+            {/* Desktop nav */}
             <nav className="hidden items-center gap-6 text-sm text-zinc-300 md:flex">
               <Link to="/" className="transition hover:text-cyan-200">{t('home')}</Link>
               <Link to="/generator" className="transition hover:text-cyan-200">{t('studio')}</Link>
@@ -32,12 +44,49 @@ function Layout({ children, hideHeader = false }: { children: ReactNode; hideHea
             </nav>
 
             <div className="flex items-center gap-3">
-              <Link to="/generator" className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-[10px] uppercase tracking-[0.25em] text-cyan-100 shadow-[0_0_25px_rgba(34,211,238,0.12)] transition hover:bg-cyan-500/15">
+              <Link to="/generator" className="hidden sm:inline-flex rounded-full border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-[10px] uppercase tracking-[0.25em] text-cyan-100 shadow-[0_0_25px_rgba(34,211,238,0.12)] transition hover:bg-cyan-500/15">
                 {t('studio')}
               </Link>
+              {/* Mobile hamburger */}
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen(true)}
+                aria-label={t('menu')}
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-zinc-400 md:hidden transition hover:border-white/20 hover:text-white"
+              >
+                <svg width="18" height="14" viewBox="0 0 18 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M1 1H17M1 7H17M1 13H17" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+              </button>
             </div>
           </div>
         </header>
+      )}
+
+      {/* Mobile menu overlay */}
+      {mobileMenuOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setMobileMenuOpen(false)} />
+          <nav className="absolute right-0 top-0 h-full w-72 max-w-[85vw] bg-[#0a0f1a]/95 backdrop-blur-xl border-l border-white/8 overflow-y-auto" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+            <div className="flex items-center justify-between border-b border-white/8 px-5 py-4">
+              <span className="text-sm font-semibold text-white">{t('menu')}</span>
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen(false)}
+                aria-label={t('close')}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-zinc-400 transition hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex flex-col gap-1 p-4">
+              <Link to="/" onClick={() => setMobileMenuOpen(false)} className="rounded-xl px-4 py-3 text-sm text-zinc-300 transition hover:bg-white/5 hover:text-white">{t('home')}</Link>
+              <Link to="/generator" onClick={() => setMobileMenuOpen(false)} className="rounded-xl px-4 py-3 text-sm text-zinc-300 transition hover:bg-white/5 hover:text-white">{t('studio')}</Link>
+              <Link to="/gallery" onClick={() => setMobileMenuOpen(false)} className="rounded-xl px-4 py-3 text-sm text-zinc-300 transition hover:bg-white/5 hover:text-white">{t('gallery')}</Link>
+              <Link to="/settings" onClick={() => setMobileMenuOpen(false)} className="rounded-xl px-4 py-3 text-sm text-zinc-300 transition hover:bg-white/5 hover:text-white">{t('settings')}</Link>
+            </div>
+          </nav>
+        </div>
       )}
 
       <main className="relative z-10">{children}</main>
@@ -54,13 +103,13 @@ function HomePage() {
         <div className="relative grid items-center gap-10 lg:grid-cols-[1.15fr_0.85fr]">
           <div>
             <div className="mb-5 inline-flex items-center rounded-full border border-cyan-400/20 bg-cyan-500/8 px-3 py-1.5 text-[10px] uppercase tracking-[0.32em] text-cyan-200">
-              {t('studio')} generativo matematico
+              {t('studio')} {t('hero_subtitle')}
             </div>
             <h2 className="max-w-2xl text-4xl font-black tracking-[-0.06em] text-white sm:text-5xl lg:text-6xl">
-              Trasforma il numero in una forma viva.
+              {t('hero_heading')}
             </h2>
             <p className="mt-5 max-w-xl text-base leading-7 text-zinc-300 sm:text-lg">
-              MATHEMATIC_ENGINE mappa sequenze numeriche in oggetti luminosi, materiali complessi e scene cinematiche costruite dalla matematica.
+              {t('hero_description')}
             </p>
 
             <div className="mt-7 flex flex-wrap items-center gap-3 text-[10px] uppercase tracking-[0.28em] text-zinc-300">
@@ -73,10 +122,10 @@ function HomePage() {
 
             <div className="mt-8 flex flex-wrap gap-4">
               <Link to="/generator" className="inline-flex items-center justify-center rounded-full bg-cyan-400 px-6 py-3 text-sm font-medium text-slate-950 shadow-[0_0_35px_rgba(34,211,238,0.30)] transition hover:bg-cyan-300">
-                Create art
+                {t('create_art')}
               </Link>
               <Link to="/gallery" className="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-6 py-3 text-sm font-medium text-white transition hover:border-cyan-300/30 hover:text-cyan-100">
-                Esplora galleria
+                {t('explore_gallery')}
               </Link>
             </div>
           </div>
@@ -97,17 +146,17 @@ function HomePage() {
 
       <section className="mt-12 grid gap-5 md:grid-cols-3">
         {[
-          { title: 'MATHEMATICS', heading: 'Motore', text: 'Collatz, Recamán, Fibonacci e numeri primi come sistemi dinamici visivi.', icon: (
+          { title: 'MATHEMATICS', heading: t('feature_mathematics'), text: t('feature_mathematics_desc'), icon: (
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-6 w-6 text-cyan-300">
               <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5m.75-9l3-3 2.148 2.148A12.061 12.061 0 0116.5 7.605" />
             </svg>
           ) },
-          { title: 'STRUCTURE', heading: 'Struttura', text: 'Ulam, cartesiana, polare ed esagonale per una geometria sempre distinta.', icon: (
+          { title: 'STRUCTURE', heading: t('feature_structure'), text: t('feature_structure_desc'), icon: (
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-6 w-6 text-cyan-300">
               <path strokeLinecap="round" strokeLinejoin="round" d="M21 7.5l-2.25-1.313M21 7.5v2.25m0-2.25l-2.25 1.313M3 7.5l2.25-1.313M3 7.5l2.25 1.313M3 7.5v2.25m9 3l2.25-1.313M12 12.75l-2.25-1.313M12 12.75V15m0 6.75l2.25-1.313M12 21.75V19.5m0 2.25l-2.25-1.313m0-16.875L12 2.25l2.25 1.313M21 14.25v2.25l-2.25 1.313m-13.5 0L3 16.5v-2.25" />
             </svg>
           ) },
-          { title: 'MATERIAL', heading: 'Materiale', text: 'Cristallo, metallo, vetro, luce e rifrazione per una scena da prodotto premium.', icon: (
+          { title: 'MATERIAL', heading: t('feature_material'), text: t('feature_material_desc'), icon: (
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-6 w-6 text-cyan-300">
               <path strokeLinecap="round" strokeLinejoin="round" d="M9.53 16.122a3 3 0 00-5.78 1.128 2.25 2.25 0 01-2.4 2.245 4.5 4.5 0 008.4-2.245c0-.399-.078-.78-.22-1.128zm0 0a15.998 15.998 0 003.388-1.62m-5.043-.025a15.994 15.994 0 011.622-3.395m3.42 3.42a15.995 15.995 0 004.764-4.648l3.876-5.814a1.151 1.151 0 00-1.597-1.597L14.146 6.32a15.996 15.996 0 00-4.649 4.763m3.42 3.42a6.776 6.776 0 00-3.42-3.42" />
             </svg>
@@ -137,7 +186,7 @@ function GalleryPage() {
   return (
     <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 lg:px-8">
       <h2 className="text-3xl font-bold text-white">{t('gallery')}</h2>
-      <p className="mt-3 text-zinc-400">L'archivio locale conserva le opere salvate.</p>
+      <p className="mt-3 text-zinc-400">{t('gallery_description')}</p>
       <div className="mt-10 grid gap-5 md:grid-cols-3">
         {items.length === 0 ? (
           <div className="col-span-full rounded-[24px] border border-dashed border-white/10 bg-white/5 p-8 text-center text-zinc-400">
@@ -146,7 +195,7 @@ function GalleryPage() {
         ) : (
           items.map((item) => (
             <div key={item.id} className="overflow-hidden rounded-[24px] border border-white/10 bg-white/5">
-              <img src={item.preview} alt={`Opera ${item.seed}`} className="h-52 w-full object-cover" />
+              <img src={item.preview.startsWith('data:image/') ? item.preview : ''} alt={`Opera ${item.seed}`} className="h-52 w-full object-cover" />
               <div className="space-y-2 p-4">
                 <p className="text-sm text-zinc-300">Seed {item.seed}</p>
                 <div className="flex items-center justify-between text-xs text-zinc-400">
@@ -186,7 +235,7 @@ function SettingsPage() {
         </div>
 
         <div className="rounded-[24px] border border-white/10 bg-white/5 p-5">
-          <p className="text-sm uppercase tracking-[0.25em] text-zinc-500">Sviluppo</p>
+          <p className="text-sm uppercase tracking-[0.25em] text-zinc-500">{t('development')}</p>
           <div className="mt-4 space-y-4 text-zinc-300">
             <label className="flex items-center justify-between gap-4">
               <span>{t('developer_mode')}</span>

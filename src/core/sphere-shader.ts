@@ -1,9 +1,12 @@
 export const sphereVertexShader = /* glsl */ `
   uniform float uTime;
   uniform float uNoiseStrength;
+  uniform float uProgress;
+  uniform vec3 uMoveDir;
   varying vec3 vNormal;
   varying vec3 vPosition;
   varying float vDisplacement;
+  varying float vProgress;
 
   //
   // Simplex 3D noise
@@ -74,6 +77,7 @@ export const sphereVertexShader = /* glsl */ `
   void main() {
     vNormal = normalize(normalMatrix * normal);
     vPosition = position;
+    vProgress = uProgress;
 
     float slowTime = uTime * 0.15;
     float noise = snoise(position * 1.8 + slowTime);
@@ -81,9 +85,18 @@ export const sphereVertexShader = /* glsl */ `
     float combined = noise * 0.6 + noise2 * 0.4;
 
     vDisplacement = combined;
-    vec3 displaced = position + normal * combined * uNoiseStrength;
 
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(displaced, 1.0);
+    // Liquid deformation: stretch along movement direction
+    vec3 deformed = position;
+    float stretch = dot(normalize(uMoveDir + 0.001), normalize(position));
+    float liquidBulge = max(0.0, stretch) * 0.25;
+    float liquidSqueeze = 1.0 - max(0.0, -stretch) * 0.15;
+    deformed.x *= liquidSqueeze;
+    deformed.y *= liquidSqueeze;
+    deformed.z += liquidBulge;
+    deformed += normal * combined * uNoiseStrength;
+
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(deformed, 1.0);
   }
 `;
 
@@ -93,9 +106,11 @@ export const sphereFragmentShader = /* glsl */ `
   uniform vec3 uColor3;
   uniform float uTime;
   uniform float uOpacity;
+  uniform float uProgress;
   varying vec3 vNormal;
   varying vec3 vPosition;
   varying float vDisplacement;
+  varying float vProgress;
 
   void main() {
     float slowTime = uTime * 0.15;
@@ -106,16 +121,33 @@ export const sphereFragmentShader = /* glsl */ `
     float pattern = vDisplacement * 0.5 + 0.5;
     pattern = smoothstep(0.2, 0.8, pattern);
 
-    vec3 color = mix(uColor1, uColor2, pattern);
-    color = mix(color, uColor3, fresnel * 0.7);
+    // Color lerps along trajectory based on progress
+    vec3 color;
+    if (vProgress < 0.5) {
+      float u = vProgress * 2.0;
+      color = mix(uColor1, uColor2, u);
+    } else {
+      float u = (vProgress - 0.5) * 2.0;
+      color = mix(uColor2, uColor3, u);
+    }
+
+    // Blend with displacement pattern for surface variation
+    vec3 patternColor = mix(uColor1, uColor2, pattern);
+    patternColor = mix(patternColor, uColor3, fresnel * 0.7);
+    color = mix(color, patternColor, 0.4);
 
     float edge = pow(fresnel, 1.5);
-    color += uColor3 * edge * 0.4;
+    color += uColor3 * edge * 0.5;
 
-    float pulse = sin(slowTime * 2.0) * 0.05 + 0.95;
+    // Inner glow pulse
+    float pulse = sin(slowTime * 2.0) * 0.08 + 0.92;
     color *= pulse;
 
-    float alpha = mix(0.75, 0.95, 1.0 - fresnel) * uOpacity;
+    // Bright core
+    float core = 1.0 - fresnel;
+    color += vec3(0.15, 0.12, 0.2) * core * 0.3;
+
+    float alpha = mix(0.8, 0.98, 1.0 - fresnel) * uOpacity;
 
     gl_FragColor = vec4(color, alpha);
   }

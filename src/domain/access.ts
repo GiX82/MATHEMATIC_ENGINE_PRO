@@ -21,9 +21,9 @@ export function canAccessFeature(
 
   switch (feature) {
     case 'engine':
-      return freeAccess.engines.includes(value as (typeof freeAccess.engines)[number]) || value === 'collatz';
+      return freeAccess.engines.includes(value as (typeof freeAccess.engines)[number]);
     case 'grid':
-      return freeAccess.grids.includes(value as (typeof freeAccess.grids)[number]) || value === 'ulam';
+      return freeAccess.grids.includes(value as (typeof freeAccess.grids)[number]);
     case 'mode':
       return value === '2d';
     case 'palette':
@@ -41,35 +41,24 @@ export function canAccessFeature(
     case 'cameraPreset':
       return value === 'orbit';
     default:
-      return true;
+      return false;
   }
 }
 
 export function getAvailableFeatureLabel(feature: AccessFeature): string {
-  switch (feature) {
-    case 'engine':
-      return 'motori';
-    case 'grid':
-      return 'griglie';
-    case 'mode':
-      return 'modalità';
-    case 'palette':
-      return 'palette';
-    case 'geometry':
-      return 'geometria';
-    case 'material':
-      return 'materiali';
-    case 'effect':
-      return 'effetti';
-    case 'lightPreset':
-      return 'illuminazione';
-    case 'motionPreset':
-      return 'movimento';
-    case 'cameraPreset':
-      return 'camera';
-    default:
-      return 'funzioni';
-  }
+  const labels: Record<AccessFeature, string> = {
+    engine: 'engines',
+    grid: 'grids',
+    mode: 'modes',
+    palette: 'palettes',
+    geometry: 'geometries',
+    material: 'materials',
+    effect: 'effects',
+    lightPreset: 'lighting',
+    motionPreset: 'motion',
+    cameraPreset: 'camera',
+  };
+  return labels[feature] ?? feature;
 }
 
 export function isPremiumFeature(feature: AccessFeature, value: string | undefined, premium: boolean): boolean {

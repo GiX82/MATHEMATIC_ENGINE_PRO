@@ -58,7 +58,8 @@ const ArtCanvasComponent = forwardRef<ArtCanvasHandle, ArtCanvasProps>(function 
   if (use3D) {
     return (
       <Suspense fallback={<div className="flex h-full w-full items-center justify-center text-xs text-zinc-500">Loading 3D…</div>}>
-        <Renderer3D
+        <div role="img" aria-label="Mathematical generative art canvas 3D" className="h-full w-full">
+          <Renderer3D
           seed={seed}
           steps={steps}
           palette={palette}
@@ -73,15 +74,23 @@ const ArtCanvasComponent = forwardRef<ArtCanvasHandle, ArtCanvasProps>(function 
           animationSpeed={animationSpeed}
           isAnimating={isAnimating}
           customColors={customColors}
+          lineWidth={lineWidth}
+          pointSize={pointSize}
+          shadowIntensity={shadowIntensity}
+          shadowDirection={shadowDirection}
+          shadowSoftness={shadowSoftness}
+          lightAngle={lightAngle}
           onCanvasReady={handleCanvasReady}
         />
+        </div>
       </Suspense>
     );
   }
 
   return (
     <Suspense fallback={<div className="flex h-full w-full items-center justify-center text-xs text-zinc-500">Loading 2D…</div>}>
-      <Renderer2D
+      <div role="img" aria-label="Mathematical generative art canvas" className="h-full w-full">
+        <Renderer2D
         seed={seed}
         steps={steps}
         palette={palette}
@@ -100,6 +109,7 @@ const ArtCanvasComponent = forwardRef<ArtCanvasHandle, ArtCanvasProps>(function 
         lightAngle={lightAngle}
         onCanvasReady={handleCanvasReady}
       />
+      </div>
     </Suspense>
   );
 });

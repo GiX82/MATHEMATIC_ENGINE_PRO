@@ -122,7 +122,7 @@ const FilmGrainShader = {
 const ReflectionShader = {
   uniforms: {
     tDiffuse: { value: null },
-    uAmount: { value: 0.15 },
+    uAmount: { value: 0.3 },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -138,10 +138,15 @@ const ReflectionShader = {
 
     void main() {
       vec4 color = texture2D(tDiffuse, vUv);
+      // Horizontal mirror
       vec2 mirrorUv = vec2(1.0 - vUv.x, vUv.y);
       vec4 mirror = texture2D(tDiffuse, mirrorUv);
-      float edge = smoothstep(0.0, 0.4, vUv.x) * smoothstep(0.0, 0.4, 1.0 - vUv.x);
-      gl_FragColor = mix(color, mirror, uAmount * edge);
+      // Edge fade — stronger at edges, softer at center
+      float edge = smoothstep(0.0, 0.5, vUv.x) * smoothstep(0.0, 0.5, 1.0 - vUv.x);
+      // Specular highlight: brighten mirror overlay
+      vec3 specular = max(color.rgb, mirror.rgb * 0.6);
+      vec3 result = mix(color.rgb, specular, uAmount * edge);
+      gl_FragColor = vec4(result, color.a);
     }
   `,
 };
@@ -151,7 +156,7 @@ const ReflectionShader = {
 const RefractionShader = {
   uniforms: {
     tDiffuse: { value: null },
-    uAmount: { value: 0.012 },
+    uAmount: { value: 0.02 },
     uTime: { value: 0 },
   },
   vertexShader: /* glsl */ `
@@ -170,11 +175,14 @@ const RefractionShader = {
     void main() {
       vec2 center = vUv - 0.5;
       float dist = length(center);
-      float wave = sin(dist * 20.0 - uTime * 2.0) * uAmount * dist;
-      vec2 offset = normalize(center) * wave;
-      float r = texture2D(tDiffuse, vUv + offset).r;
-      float g = texture2D(tDiffuse, vUv).g;
-      float b = texture2D(tDiffuse, vUv - offset).b;
+      // Animated wave distortion
+      float wave = sin(dist * 25.0 - uTime * 3.0) * uAmount * smoothstep(0.0, 0.5, dist);
+      vec2 dir = dist > 0.001 ? center / dist : vec2(0.0);
+      vec2 offset = dir * wave;
+      // Chromatic split for glass-like refraction
+      float r = texture2D(tDiffuse, vUv + offset * 1.2).r;
+      float g = texture2D(tDiffuse, vUv + offset * 0.8).g;
+      float b = texture2D(tDiffuse, vUv - offset * 0.6).b;
       gl_FragColor = vec4(r, g, b, 1.0);
     }
   `,
@@ -185,15 +193,15 @@ const RefractionShader = {
 function getBloomParams(effect: EffectMode) {
   switch (effect) {
     case 'bloom':
-      return { strength: 0.45, radius: 0.4, threshold: 0.72 };
+      return { strength: 0.8, radius: 0.5, threshold: 0.65 };
     case 'glow':
-      return { strength: 0.3, radius: 0.25, threshold: 0.78 };
+      return { strength: 0.5, radius: 0.35, threshold: 0.72 };
     case 'cinematic-lighting':
-      return { strength: 0.5, radius: 0.45, threshold: 0.65 };
+      return { strength: 0.7, radius: 0.5, threshold: 0.6 };
     case 'depth':
-      return { strength: 0.2, radius: 0.3, threshold: 0.8 };
+      return { strength: 0.35, radius: 0.4, threshold: 0.75 };
     default:
-      return { strength: 0.25, radius: 0.3, threshold: 0.75 };
+      return { strength: 0.3, radius: 0.3, threshold: 0.75 };
   }
 }
 
@@ -231,25 +239,27 @@ export function setupPostProcessing(
 
   if (effect === 'reflection') {
     reflectionPass = new ShaderPass(ReflectionShader);
+    reflectionPass.uniforms.uAmount.value = 0.3;
     composer.addPass(reflectionPass);
   }
 
   if (effect === 'refraction') {
     refractionPass = new ShaderPass(RefractionShader);
+    refractionPass.uniforms.uAmount.value = 0.02;
     composer.addPass(refractionPass);
   }
 
   // Chromatic aberration — bloom, cinematic-lighting, depth
   if (effect === 'bloom' || effect === 'cinematic-lighting' || effect === 'depth') {
     chromaticPass = new ShaderPass(ChromaticAberrationShader);
-    chromaticPass.uniforms.uAmount.value = effect === 'cinematic-lighting' ? 0.002 : 0.0015;
+    chromaticPass.uniforms.uAmount.value = effect === 'cinematic-lighting' ? 0.003 : 0.002;
     composer.addPass(chromaticPass);
   }
 
   // Film grain — bloom, cinematic-lighting, depth
   if (effect === 'bloom' || effect === 'cinematic-lighting' || effect === 'depth') {
     grainPass = new ShaderPass(FilmGrainShader);
-    grainPass.uniforms.uIntensity.value = effect === 'cinematic-lighting' ? 0.035 : 0.03;
+    grainPass.uniforms.uIntensity.value = effect === 'cinematic-lighting' ? 0.04 : 0.03;
     composer.addPass(grainPass);
   }
 
@@ -257,8 +267,8 @@ export function setupPostProcessing(
   let vignettePass: ShaderPass | null = null;
   if (effect !== 'fog') {
     vignettePass = new ShaderPass(VignetteShader);
-    vignettePass.uniforms.uDarkness.value = effect === 'cinematic-lighting' ? 0.5 : effect === 'depth' ? 0.6 : 0.4;
-    vignettePass.uniforms.uOffset.value = effect === 'depth' ? 0.25 : 0.4;
+    vignettePass.uniforms.uDarkness.value = effect === 'cinematic-lighting' ? 0.7 : effect === 'depth' ? 0.65 : effect === 'bloom' ? 0.55 : 0.45;
+    vignettePass.uniforms.uOffset.value = effect === 'depth' ? 0.28 : 0.38;
     composer.addPass(vignettePass);
   }
 

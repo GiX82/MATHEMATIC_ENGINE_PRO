@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import { clampSeed } from '../domain/engines';
 import type { CameraPresetId, EffectMode, GeometryMode, LightPresetId, MaterialMode, MotionPresetId } from '../domain/types';
 import type { GeneratorEngine, PaletteKey, SpatialGrid } from '../lib/math';
@@ -52,54 +53,59 @@ interface ArtworkState {
   randomize: () => void;
 }
 
-export const useArtworkStore = create<ArtworkState>((set) => ({
-  seed: 27,
-  steps: 200,
-  mode: '2d',
-  engine: 'collatz',
-  grid: 'ulam',
-  palette: 'aurora',
-  geometry: 'lines',
-  material: 'basic',
-  effect: 'neutral',
-  lightPreset: 'standard',
-  motionPreset: 'ease-in-out',
-  cameraPreset: 'orbit',
-  customColors: ['#00f5d4', '#7b2ff7', '#f72585'],
-  lineWidth: 2.5,
-  pointSize: 3.0,
-  shadowIntensity: 4,
-  shadowDirection: 135,
-  shadowSoftness: 2,
-  lightAngle: 45,
-  animationDuration: 10,
-  setSeed: (value) => set({ seed: clampSeed(value) }),
-  setSteps: (value) =>
-    set({
-      steps: Math.min(MAX_STEPS, Math.max(MIN_STEPS, Math.trunc(Number.isFinite(value) ? value : MIN_STEPS))),
+export const useArtworkStore = create<ArtworkState>()(
+  persist(
+    (set) => ({
+      seed: 27,
+      steps: 200,
+      mode: '2d',
+      engine: 'collatz',
+      grid: 'ulam',
+      palette: 'aurora',
+      geometry: 'lines',
+      material: 'basic',
+      effect: 'neutral',
+      lightPreset: 'standard',
+      motionPreset: 'ease-in-out',
+      cameraPreset: 'orbit',
+      customColors: ['#00f5d4', '#7b2ff7', '#f72585'],
+      lineWidth: 2.5,
+      pointSize: 3.0,
+      shadowIntensity: 4,
+      shadowDirection: 135,
+      shadowSoftness: 2,
+      lightAngle: 45,
+      animationDuration: 10,
+      setSeed: (value) => set({ seed: clampSeed(value) }),
+      setSteps: (value) =>
+        set({
+          steps: Math.min(MAX_STEPS, Math.max(MIN_STEPS, Math.trunc(Number.isFinite(value) ? value : MIN_STEPS))),
+        }),
+      setMode: (mode) => set({ mode }),
+      setEngine: (engine) => set({ engine }),
+      setGrid: (grid) => set({ grid }),
+      setPalette: (palette) => set({ palette }),
+      setGeometry: (geometry) => set({ geometry }),
+      setMaterial: (material) => set({ material }),
+      setEffect: (effect) => set({ effect }),
+      setLightPreset: (lightPreset) => set({ lightPreset }),
+      setMotionPreset: (motionPreset) => set({ motionPreset }),
+      setCameraPreset: (cameraPreset) => set({ cameraPreset }),
+      setCustomColor: (index, color) =>
+        set((state) => {
+          const next = [...state.customColors] as [string, string, string];
+          next[index] = color;
+          return { customColors: next };
+        }),
+      setLineWidth: (value) => set({ lineWidth: Math.max(0.5, Math.min(10, value)) }),
+      setPointSize: (value) => set({ pointSize: Math.max(0.5, Math.min(12, value)) }),
+      setShadowIntensity: (value) => set({ shadowIntensity: Math.max(0, Math.min(10, Math.round(value))) }),
+      setShadowDirection: (value) => set({ shadowDirection: ((value % 360) + 360) % 360 }),
+      setShadowSoftness: (value) => set({ shadowSoftness: Math.max(0, Math.min(3, Math.round(value))) }),
+      setLightAngle: (value) => set({ lightAngle: Math.max(15, Math.min(90, Math.round(value))) }),
+      setAnimationDuration: (value) => set({ animationDuration: Math.max(1, Math.min(15, Math.round(value))) }),
+      randomize: () => set({ seed: Math.floor(Math.random() * 1000000) + 1 }),
     }),
-  setMode: (mode) => set({ mode }),
-  setEngine: (engine) => set({ engine }),
-  setGrid: (grid) => set({ grid }),
-  setPalette: (palette) => set({ palette }),
-  setGeometry: (geometry) => set({ geometry }),
-  setMaterial: (material) => set({ material }),
-  setEffect: (effect) => set({ effect }),
-  setLightPreset: (lightPreset) => set({ lightPreset }),
-  setMotionPreset: (motionPreset) => set({ motionPreset }),
-  setCameraPreset: (cameraPreset) => set({ cameraPreset }),
-  setCustomColor: (index, color) =>
-    set((state) => {
-      const next = [...state.customColors] as [string, string, string];
-      next[index] = color;
-      return { customColors: next };
-    }),
-  setLineWidth: (value) => set({ lineWidth: Math.max(0.5, Math.min(10, value)) }),
-  setPointSize: (value) => set({ pointSize: Math.max(0.5, Math.min(12, value)) }),
-  setShadowIntensity: (value) => set({ shadowIntensity: Math.max(0, Math.min(10, Math.round(value))) }),
-  setShadowDirection: (value) => set({ shadowDirection: ((value % 360) + 360) % 360 }),
-  setShadowSoftness: (value) => set({ shadowSoftness: Math.max(0, Math.min(3, Math.round(value))) }),
-  setLightAngle: (value) => set({ lightAngle: Math.max(15, Math.min(90, Math.round(value))) }),
-  setAnimationDuration: (value) => set({ animationDuration: Math.max(1, Math.min(15, Math.round(value))) }),
-  randomize: () => set({ seed: Math.floor(Math.random() * 9000) + 10 }),
-}));
+    { name: 'mathematic-engine-artwork' },
+  ),
+);

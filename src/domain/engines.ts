@@ -44,8 +44,6 @@ export function recamanSequence(seed: number, maxIterations = 1200): number[] {
     sequence.push(candidate);
     previous = candidate;
     seen.add(candidate);
-
-    if (candidate === 1) break;
   }
 
   return sequence;
@@ -302,16 +300,19 @@ export function customRecurrenceSequence(seed: number, maxIterations = 200): num
 }
 
 export function lucasSequence(seed: number, maxIterations = 200): number[] {
-  const sequence: number[] = [2, 1];
+  const safeSeed = clampSeed(seed);
+  const offset = (safeSeed - 1) % 50;
+  const total = offset + maxIterations;
+  const full: number[] = [2, 1];
   let a = 2, b = 1;
-  for (let i = 2; i < maxIterations; i++) {
+  for (let i = 2; i < total; i++) {
     const next = a + b;
-    sequence.push(next);
+    if (next > Number.MAX_SAFE_INTEGER / 2) break;
+    full.push(next);
     a = b;
     b = next;
-    if (next > Number.MAX_SAFE_INTEGER / 2) break;
   }
-  return sequence;
+  return full.slice(offset, offset + maxIterations);
 }
 
 export function pellSequence(seed: number, maxIterations = 200): number[] {
@@ -431,10 +432,14 @@ export function rosslerSequence(seed: number, maxIterations = 500): number[] {
 }
 
 export function mandelbrotSequence(seed: number, maxIterations = 300): number[] {
+  const safeSeed = clampSeed(seed);
+  const offsetX = ((safeSeed % 1000) / 1000 - 0.5) * 0.5;
+  const offsetY = (((safeSeed / 1000 | 0) % 1000) / 1000 - 0.5) * 0.5;
+  const zoom = 0.5 + (safeSeed % 100) / 100 * 2;
   const sequence: number[] = [];
   for (let i = 0; i < maxIterations; i++) {
-    const cx = (i % 20 - 10) / 5;
-    const cy = (Math.floor(i / 20) - 15) / 5;
+    const cx = (i % 20 - 10) / 5 / zoom + offsetX;
+    const cy = (Math.floor(i / 20) - 15) / 5 / zoom + offsetY;
     let zx = 0, zy = 0;
     let iteration = 0;
     while (zx * zx + zy * zy < 4 && iteration < 50) {
@@ -451,11 +456,12 @@ export function mandelbrotSequence(seed: number, maxIterations = 300): number[] 
 export function juliaSequence(seed: number, maxIterations = 300): number[] {
   const safeSeed = clampSeed(seed);
   const sequence: number[] = [];
-  const cr = (safeSeed % 400) / 200 - 1;
-  const ci = (safeSeed % 200) / 200 - 0.5;
+  const cr = ((safeSeed % 400) / 400 - 0.5) * 3.0;
+  const ci = (((safeSeed / 400 | 0) % 400) / 400 - 0.5) * 3.0;
+  const zoom = 0.5 + (safeSeed % 100) / 100 * 2;
   for (let i = 0; i < maxIterations; i++) {
-    let zx = (i % 20 - 10) / 5;
-    let zy = (Math.floor(i / 20) - 15) / 5;
+    let zx = (i % 20 - 10) / 5 / zoom;
+    let zy = (Math.floor(i / 20) - 15) / 5 / zoom;
     let iteration = 0;
     while (zx * zx + zy * zy < 4 && iteration < 50) {
       const tmp = zx * zx - zy * zy + cr;
@@ -469,10 +475,14 @@ export function juliaSequence(seed: number, maxIterations = 300): number[] {
 }
 
 export function burningShipSequence(seed: number, maxIterations = 300): number[] {
+  const safeSeed = clampSeed(seed);
+  const offsetX = ((safeSeed % 1000) / 1000 - 0.5) * 0.5;
+  const offsetY = (((safeSeed / 1000 | 0) % 1000) / 1000 - 0.5) * 0.5;
+  const zoom = 0.5 + (safeSeed % 100) / 100 * 2;
   const sequence: number[] = [];
   for (let i = 0; i < maxIterations; i++) {
-    const cx = (i % 20 - 10) / 5;
-    const cy = (Math.floor(i / 20) - 15) / 5;
+    const cx = (i % 20 - 10) / 5 / zoom + offsetX;
+    const cy = (Math.floor(i / 20) - 15) / 5 / zoom + offsetY;
     let zx = 0, zy = 0;
     let iteration = 0;
     while (zx * zx + zy * zy < 4 && iteration < 50) {
@@ -530,7 +540,7 @@ export function phyllotaxisSequence(seed: number, maxIterations = 300): number[]
   const goldenAngle = Math.PI * (3 - Math.sqrt(5));
   const sequence: number[] = [];
   for (let i = 0; i < maxIterations; i++) {
-    const angle = i * goldenAngle + safeSeed * 0.001;
+    const angle = i * goldenAngle + safeSeed * 0.1;
     const radius = Math.sqrt(i) * 10;
     const x = Math.cos(angle) * radius;
     const y = Math.sin(angle) * radius;
@@ -586,8 +596,8 @@ export const engineDefinitions: Record<EngineId, EngineDefinition> = {
   },
   recaman: {
     id: 'recaman',
-    name: 'Recamán',
-    description: 'Sequenza autointersecante e molto irregolare.',
+    name: 'Recamán VS',
+    description: 'Variante con partenza dal seed: a(0)=seed, regola standard.',
     premium: true,
     generate: recamanSequence,
   },

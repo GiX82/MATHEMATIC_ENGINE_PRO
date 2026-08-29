@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useShallow } from 'zustand/react/shallow';
 import { useArtworkStore } from '../store/useArtworkStore';
 import { useUserStore } from '../store/useUserStore';
+import { useGalleryStore } from '../store/useGalleryStore';
 import { canAccessFeature, type AccessFeature } from '../domain/access';
 import { geometryCatalog, materialCatalog, effectCatalog } from '../domain/geometry';
 import {
@@ -115,8 +116,35 @@ export function SlidePanel({ isOpen, onClose, artCanvasRef }: SlidePanelProps) {
 
   useEffect(() => {
     if (!isOpen) return;
-    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const panel = panelRef.current;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (e.key === 'Tab' && panel) {
+        const focusable = panel.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else if (document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
     window.addEventListener('keydown', handleKey);
+    const firstFocusable = panel?.querySelector<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    firstFocusable?.focus();
     return () => window.removeEventListener('keydown', handleKey);
   }, [isOpen, onClose]);
 
@@ -133,6 +161,9 @@ export function SlidePanel({ isOpen, onClose, artCanvasRef }: SlidePanelProps) {
       {/* Panel */}
       <div
         ref={panelRef}
+        role="dialog"
+        aria-label={t('studio')}
+        aria-modal="true"
         className={`fixed right-0 top-0 z-50 h-full w-[340px] max-w-[85vw] transform bg-[#0a0f1a]/95 backdrop-blur-xl border-l border-white/8 transition-transform duration-300 ease-out ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
@@ -143,6 +174,7 @@ export function SlidePanel({ isOpen, onClose, artCanvasRef }: SlidePanelProps) {
           <button
             type="button"
             onClick={onClose}
+            aria-label={t('close')}
             className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-zinc-400 transition hover:text-white"
           >
             ✕
@@ -175,37 +207,40 @@ export function SlidePanel({ isOpen, onClose, artCanvasRef }: SlidePanelProps) {
           <PanelSection title={t('colors')}>
             <div className="grid gap-2">
               <div className="flex items-center gap-2">
-                <label className="text-[10px] text-zinc-500 w-12">Colore 1</label>
+                <label className="text-[10px] text-zinc-500 w-12">{t('color_1')}</label>
                 <input
                   type="color"
                   value={customColors[0]}
                   onChange={(e) => setCustomColor(0, e.target.value)}
                   className="h-7 w-full cursor-pointer rounded border border-white/10 bg-transparent"
+                  aria-label={t('color_1')}
                 />
               </div>
               <div className="flex items-center gap-2">
-                <label className="text-[10px] text-zinc-500 w-12">Colore 2</label>
+                <label className="text-[10px] text-zinc-500 w-12">{t('color_2')}</label>
                 <input
                   type="color"
                   value={customColors[1]}
                   onChange={(e) => setCustomColor(1, e.target.value)}
                   className="h-7 w-full cursor-pointer rounded border border-white/10 bg-transparent"
+                  aria-label={t('color_2')}
                 />
               </div>
               <div className="flex items-center gap-2">
-                <label className="text-[10px] text-zinc-500 w-12">Colore 3</label>
+                <label className="text-[10px] text-zinc-500 w-12">{t('color_3')}</label>
                 <input
                   type="color"
                   value={customColors[2]}
                   onChange={(e) => setCustomColor(2, e.target.value)}
                   className="h-7 w-full cursor-pointer rounded border border-white/10 bg-transparent"
+                  aria-label={t('color_3')}
                 />
               </div>
             </div>
           </PanelSection>
 
           {/* Animation Duration */}
-          <PanelSection title="Durata animazione">
+          <PanelSection title={t('animation_duration')}>
             <div className="flex items-center gap-2">
               <input
                 type="range"
@@ -215,6 +250,7 @@ export function SlidePanel({ isOpen, onClose, artCanvasRef }: SlidePanelProps) {
                 value={animationDuration}
                 onChange={(e) => setAnimationDuration(parseInt(e.target.value, 10))}
                 className="flex-1 accent-cyan-400"
+                aria-label={t('animation_duration')}
               />
               <span className="text-[10px] text-zinc-400 w-10 text-right">{animationDuration}s</span>
             </div>
@@ -222,10 +258,10 @@ export function SlidePanel({ isOpen, onClose, artCanvasRef }: SlidePanelProps) {
 
           {/* 2D Controls */}
           {mode === '2d' && (
-          <PanelSection title="Controlli 2D">
+          <PanelSection title={t('controls_2d')}>
             <div className="grid gap-2">
               <div className="flex items-center gap-2">
-                <label className="text-[10px] text-zinc-500 w-20">Spessore</label>
+                <label className="text-[10px] text-zinc-500 w-20">{t('thickness')}</label>
                 <input
                   type="range"
                   min="0.5"
@@ -234,11 +270,12 @@ export function SlidePanel({ isOpen, onClose, artCanvasRef }: SlidePanelProps) {
                   value={lineWidth}
                   onChange={(e) => setLineWidth(parseFloat(e.target.value))}
                   className="flex-1 accent-cyan-400"
+                  aria-label={t('thickness')}
                 />
                 <span className="text-[10px] text-zinc-400 w-6 text-right">{lineWidth}</span>
               </div>
               <div className="flex items-center gap-2">
-                <label className="text-[10px] text-zinc-500 w-20">Punti</label>
+                <label className="text-[10px] text-zinc-500 w-20">{t('points')}</label>
                 <input
                   type="range"
                   min="0.5"
@@ -247,11 +284,12 @@ export function SlidePanel({ isOpen, onClose, artCanvasRef }: SlidePanelProps) {
                   value={pointSize}
                   onChange={(e) => setPointSize(parseFloat(e.target.value))}
                   className="flex-1 accent-cyan-400"
+                  aria-label={t('points')}
                 />
                 <span className="text-[10px] text-zinc-400 w-6 text-right">{pointSize}</span>
               </div>
               <div className="flex items-center gap-2">
-                <label className="text-[10px] text-zinc-500 w-20">Ombra</label>
+                <label className="text-[10px] text-zinc-500 w-20">{t('shadow')}</label>
                 <input
                   type="range"
                   min="0"
@@ -260,11 +298,12 @@ export function SlidePanel({ isOpen, onClose, artCanvasRef }: SlidePanelProps) {
                   value={shadowIntensity}
                   onChange={(e) => setShadowIntensity(parseInt(e.target.value, 10))}
                   className="flex-1 accent-cyan-400"
+                  aria-label={t('shadow')}
                 />
                 <span className="text-[10px] text-zinc-400 w-6 text-right">{shadowIntensity}</span>
               </div>
               <div className="flex items-center gap-2">
-                <label className="text-[10px] text-zinc-500 w-20">Direzione</label>
+                <label className="text-[10px] text-zinc-500 w-20">{t('direction')}</label>
                 <input
                   type="range"
                   min="0"
@@ -273,11 +312,12 @@ export function SlidePanel({ isOpen, onClose, artCanvasRef }: SlidePanelProps) {
                   value={shadowDirection}
                   onChange={(e) => setShadowDirection(parseInt(e.target.value, 10))}
                   className="flex-1 accent-cyan-400"
+                  aria-label={t('direction')}
                 />
                 <span className="text-[10px] text-zinc-400 w-6 text-right">{shadowDirection}°</span>
               </div>
               <div className="flex items-center gap-2">
-                <label className="text-[10px] text-zinc-500 w-20">Morbidezza</label>
+                <label className="text-[10px] text-zinc-500 w-20">{t('softness')}</label>
                 <input
                   type="range"
                   min="0"
@@ -286,11 +326,12 @@ export function SlidePanel({ isOpen, onClose, artCanvasRef }: SlidePanelProps) {
                   value={shadowSoftness}
                   onChange={(e) => setShadowSoftness(parseInt(e.target.value, 10))}
                   className="flex-1 accent-cyan-400"
+                  aria-label={t('softness')}
                 />
                 <span className="text-[10px] text-zinc-400 w-6 text-right">{shadowSoftness}</span>
               </div>
               <div className="flex items-center gap-2">
-                <label className="text-[10px] text-zinc-500 w-20">Angolo luce</label>
+                <label className="text-[10px] text-zinc-500 w-20">{t('light_angle')}</label>
                 <input
                   type="range"
                   min="15"
@@ -299,6 +340,7 @@ export function SlidePanel({ isOpen, onClose, artCanvasRef }: SlidePanelProps) {
                   value={lightAngle}
                   onChange={(e) => setLightAngle(parseInt(e.target.value, 10))}
                   className="flex-1 accent-cyan-400"
+                  aria-label={t('light_angle')}
                 />
                 <span className="text-[10px] text-zinc-400 w-6 text-right">{lightAngle}°</span>
               </div>
@@ -470,6 +512,7 @@ export function SlidePanel({ isOpen, onClose, artCanvasRef }: SlidePanelProps) {
               value={steps}
               onChange={(e) => setSteps(Number(e.target.value))}
               className="w-full accent-cyan-400"
+              aria-label={t('steps')}
             />
             <div className="mt-1 text-right text-[10px] text-zinc-500">{steps} {t('iterations')}</div>
           </PanelSection>
@@ -479,6 +522,7 @@ export function SlidePanel({ isOpen, onClose, artCanvasRef }: SlidePanelProps) {
               <button
                 type="button"
                 onClick={randomize}
+                aria-label={t('randomize')}
                 className="rounded-lg border border-white/5 bg-white/3 px-3 py-2 text-xs text-zinc-300 transition hover:bg-white/5"
               >
                 🎲 {t('randomize')}
@@ -486,6 +530,7 @@ export function SlidePanel({ isOpen, onClose, artCanvasRef }: SlidePanelProps) {
               <button
                 type="button"
                 onClick={handleNextMode}
+                aria-label={mode === '2d' ? '3D' : '2D'}
                 className="rounded-lg border border-cyan-400/20 bg-cyan-500/10 px-3 py-2 text-xs text-cyan-200 transition hover:bg-cyan-500/15"
               >
                 {mode === '2d' ? '🔄 3D' : '🔄 2D'}
@@ -505,21 +550,21 @@ export function SlidePanel({ isOpen, onClose, artCanvasRef }: SlidePanelProps) {
               </button>
               <button
                 type="button"
-                onClick={() => { /* export video */ onClose(); }}
-                className="w-full rounded-lg border border-violet-400/20 bg-violet-500/10 px-3 py-2 text-xs text-violet-100 transition hover:bg-violet-500/15"
+                disabled
+                className="w-full rounded-lg border border-white/5 bg-white/3 px-3 py-2 text-xs text-zinc-600 cursor-not-allowed"
               >
-                🎬 {t('export_video')}
+                🎬 {t('export_video')} — {t('coming_soon')}
               </button>
               <button
                 type="button"
-                onClick={() => { /* export cert */ onClose(); }}
-                className="w-full rounded-lg border border-amber-400/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-100 transition hover:bg-amber-500/15"
+                disabled
+                className="w-full rounded-lg border border-white/5 bg-white/3 px-3 py-2 text-xs text-zinc-600 cursor-not-allowed"
               >
-                📜 {t('export_cert')}
+                📜 {t('export_cert')} — {t('coming_soon')}
               </button>
               <button
                 type="button"
-                onClick={() => { /* save */ onClose(); }}
+                onClick={handleSaveToGallery}
                 className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-zinc-300 transition hover:bg-white/8"
               >
                 💾 {t('save_gallery')}
@@ -532,6 +577,7 @@ export function SlidePanel({ isOpen, onClose, artCanvasRef }: SlidePanelProps) {
             <button
               type="button"
               onClick={togglePremium}
+              aria-label={premium ? t('premium_active') : t('enable_premium')}
               className={`w-full rounded-xl border px-4 py-3 text-xs font-medium transition ${
                 premium
                   ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300'
@@ -547,12 +593,55 @@ export function SlidePanel({ isOpen, onClose, artCanvasRef }: SlidePanelProps) {
   );
 
   function handleExportPNG() {
+    try {
+      const canvas = artCanvasRef?.current?.getCanvas();
+      if (!canvas) return;
+      const link = document.createElement('a');
+      link.download = `math-engine-${Date.now()}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+      onClose();
+    } catch {
+      // canvas.toDataURL can throw if WebGL context lost or tainted
+    }
+  }
+
+  function captureThumbnail(): string {
     const canvas = artCanvasRef?.current?.getCanvas();
-    if (!canvas) return;
-    const link = document.createElement('a');
-    link.download = `math-engine-${Date.now()}.png`;
-    link.href = canvas.toDataURL('image/png');
-    link.click();
+    if (!canvas) return '';
+    try {
+      const maxSide = 200;
+      const scale = maxSide / Math.max(canvas.width, canvas.height);
+      const w = Math.round(canvas.width * scale);
+      const h = Math.round(canvas.height * scale);
+      const offscreen = document.createElement('canvas');
+      offscreen.width = w;
+      offscreen.height = h;
+      const ctx = offscreen.getContext('2d');
+      if (!ctx) return canvas.toDataURL('image/png');
+      ctx.drawImage(canvas, 0, 0, w, h);
+      return offscreen.toDataURL('image/png');
+    } catch {
+      return '';
+    }
+  }
+
+  function handleSaveToGallery() {
+    const preview = captureThumbnail();
+    if (!preview) return;
+    const saveArtwork = useGalleryStore.getState().saveArtwork;
+    saveArtwork({
+      seed: useArtworkStore.getState().seed,
+      steps: useArtworkStore.getState().steps,
+      mode: useArtworkStore.getState().mode,
+      engine: useArtworkStore.getState().engine,
+      grid: useArtworkStore.getState().grid,
+      palette: useArtworkStore.getState().palette,
+      geometry: useArtworkStore.getState().geometry,
+      material: useArtworkStore.getState().material,
+      effect: useArtworkStore.getState().effect,
+      preview,
+    });
     onClose();
   }
 

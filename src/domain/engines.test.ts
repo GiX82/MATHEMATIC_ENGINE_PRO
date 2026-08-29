@@ -238,22 +238,35 @@ describe('Custom recurrence', () => {
 });
 
 describe('Lucas sequence', () => {
-  it('starts with 2, 1', () => {
-    const seq = lucasSequence(42, 10);
+  it('starts with 2, 1 for seed=1 (offset=0)', () => {
+    const seq = lucasSequence(1, 10);
     expect(seq[0]).toBe(2);
     expect(seq[1]).toBe(1);
   });
 
   it('follows L(n) = L(n-1) + L(n-2)', () => {
-    const seq = lucasSequence(42, 20);
+    const seq = lucasSequence(1, 20);
     for (let i = 2; i < seq.length; i++) {
       expect(seq[i]).toBe(seq[i - 1] + seq[i - 2]);
     }
   });
 
-  it('known values: 2, 1, 3, 4, 7, 11', () => {
-    const seq = lucasSequence(0, 6);
+  it('known values from offset 0: 2, 1, 3, 4, 7, 11', () => {
+    const seq = lucasSequence(1, 6);
     expect(seq).toEqual([2, 1, 3, 4, 7, 11]);
+  });
+
+  it('different seeds produce different outputs', () => {
+    const a = lucasSequence(1, 20);
+    const b = lucasSequence(50, 20);
+    expect(a).not.toEqual(b);
+  });
+
+  it('seed offsets into the Lucas sequence', () => {
+    const seq1 = lucasSequence(1, 6);
+    const seq5 = lucasSequence(5, 6);
+    expect(seq1[0]).toBe(2);
+    expect(seq5[0]).not.toBe(2);
   });
 });
 

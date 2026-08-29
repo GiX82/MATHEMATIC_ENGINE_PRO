@@ -22,20 +22,62 @@ interface Renderer2DProps {
   onCanvasReady?: (canvas: HTMLCanvasElement) => void;
 }
 
-export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effect, animationSpeed, isAnimating, customColors, lineWidth = 2.5, pointSize = 3, shadowIntensity = 4, shadowDirection = 135, shadowSoftness = 2, lightAngle = 45, onCanvasReady }: Renderer2DProps) {
+type CachedArtwork = {
+  normalized: Array<{ x: number; y: number; value: number }>;
+  stats: { maxValue: number };
+  paletteColors: Record<string, string>;
+};
+
+function parseHex(hex: string): [number, number, number] {
+  const n = parseInt(hex.replace('#', ''), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effect, animationSpeed, isAnimating, customColors, lineWidth = 1.5, pointSize = 3, shadowIntensity = 4, shadowDirection: _shadowDirection = 135, shadowSoftness = 2, lightAngle: _lightAngle = 45, onCanvasReady }: Renderer2DProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const animationStateRef = useRef({ speed: animationSpeed, animating: isAnimating, shIntensity: shadowIntensity, shDirection: shadowDirection, shSoftness: shadowSoftness, lightAngle });
+  const artworkCacheRef = useRef<CachedArtwork | null>(null);
 
+  // Ref for animation params that change frequently (no rebuild needed)
+  const animParamsRef = useRef({
+    speed: animationSpeed,
+    animating: isAnimating,
+    shIntensity: shadowIntensity,
+    shSoftness: shadowSoftness,
+    lineWidth,
+    pointSize,
+    effect,
+  });
+
+  // Ref for colors — updated cheaply, read in animation loop
+  const colorsRef = useRef({
+    bg: '#02060e',
+    start: '#00f5d4',
+    glow: '#7b2ff7',
+    end: '#f72585',
+    accent: '#00f5d4',
+  });
+
+  // ── EFFECT 1: Sync animation params (no rebuild) ────────────────────────
   useEffect(() => {
-    animationStateRef.current.speed = animationSpeed;
-    animationStateRef.current.animating = isAnimating;
-    animationStateRef.current.shIntensity = shadowIntensity;
-    animationStateRef.current.shDirection = shadowDirection;
-    animationStateRef.current.shSoftness = shadowSoftness;
-    animationStateRef.current.lightAngle = lightAngle;
-  }, [animationSpeed, isAnimating, shadowIntensity, shadowDirection, shadowSoftness, lightAngle]);
+    animParamsRef.current.speed = animationSpeed;
+    animParamsRef.current.animating = isAnimating;
+    animParamsRef.current.shIntensity = shadowIntensity;
+    animParamsRef.current.shSoftness = shadowSoftness;
+    animParamsRef.current.lineWidth = lineWidth;
+    animParamsRef.current.pointSize = pointSize;
+    animParamsRef.current.effect = effect;
+  }, [animationSpeed, isAnimating, shadowIntensity, shadowSoftness, lineWidth, pointSize, effect]);
 
+  // ── EFFECT 2: Sync colors (no rebuild) ──────────────────────────────────
+  useEffect(() => {
+    const pal = getPalette(palette);
+    colorsRef.current = customColors
+      ? { ...pal, start: customColors[0], glow: customColors[1], end: customColors[2] }
+      : pal;
+  }, [palette, customColors]);
+
+  // ── EFFECT 3: Expensive setup — canvas, artwork math, animation loop ────
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -72,30 +114,27 @@ export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effec
     // Offscreen canvas for noise (reused every frame)
     const noiseCanvas = document.createElement('canvas');
     const noiseCtx = noiseCanvas.getContext('2d');
+    let noiseImgData: ImageData | null = null;
+    let noiseCachedW = 0;
+    let noiseCachedH = 0;
 
     let disposed = false;
 
+    // ── Expensive math — computed once per seed/steps/engine/grid ──
     const { points, stats } = buildArtwork(seed, steps, engine, grid);
     const normalized = normalizeArtwork(points);
-    const paletteColors = getPalette(palette);
-    const colors = customColors
-      ? { ...paletteColors, start: customColors[0], glow: customColors[1], end: customColors[2] }
-      : paletteColors;
+
+    // Cache artwork data for the animation loop
+    artworkCacheRef.current = { normalized, stats, paletteColors: getPalette(palette) };
 
     let drawStart = -1;
-    const drawDuration = 8000;
+    const drawDuration = animParamsRef.current.speed * 1000;
 
-    const parseHex = (hex: string) => {
-      const n = parseInt(hex.replace('#', ''), 16);
-      return [(n >> 16) & 255, (n >> 8) & 255, n & 255] as const;
-    };
+    const rgbStr = (c: [number, number, number], a = 1) =>
+      `rgba(${Math.round(c[0])},${Math.round(c[1])},${Math.round(c[2])},${a})`;
 
-    const lerpColor3 = (
-      c1: readonly [number, number, number],
-      c2: readonly [number, number, number],
-      c3: readonly [number, number, number],
-      t: number,
-    ): [number, number, number] => {
+    // ── 3-stop color map using current colors (read from ref each frame) ──
+    const mapValueToColor = (t: number, c1: [number, number, number], c2: [number, number, number], c3: [number, number, number]): readonly [number, number, number] => {
       if (t < 0.5) {
         const u = t * 2;
         return [
@@ -112,15 +151,19 @@ export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effec
       ];
     };
 
-    const rgbStr = (c: [number, number, number], a = 1) =>
-      `rgba(${Math.round(c[0])},${Math.round(c[1])},${Math.round(c[2])},${a})`;
-
-    const cStart = parseHex(colors.start);
-    const cGlow = parseHex(colors.glow);
-    const cEnd = parseHex(colors.end);
+    // ── Darken a color for shadow ──
+    const darkenColor = (c: readonly [number, number, number], factor: number): readonly [number, number, number] => [
+      c[0] * factor, c[1] * factor, c[2] * factor,
+    ];
 
     const drawFrame = (time: number) => {
-      const { speed, animating, shIntensity, shDirection, shSoftness, lightAngle: lAngle } = animationStateRef.current;
+      const { speed, animating, shIntensity, shSoftness, lineWidth: lw, pointSize: ps, effect: eff } = animParamsRef.current;
+      const colors = colorsRef.current;
+
+      // Parse colors once per frame (cheap — 3 hex parses)
+      const c1 = parseHex(colors.start);
+      const c2 = parseHex(colors.glow);
+      const c3 = parseHex(colors.end);
 
       if (drawStart < 0) drawStart = time;
       const drawProgress = Math.min(1, (time - drawStart) / drawDuration);
@@ -133,27 +176,46 @@ export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effec
 
       ctx.clearRect(0, 0, viewWidth, viewHeight);
 
+      // ── Center point ──
+      const focalX = viewWidth * 0.5;
+      const focalY = viewHeight * 0.5;
+
       // ── Background gradient ──
-      const bg = ctx.createRadialGradient(viewWidth * 0.5, viewHeight * 0.5, 15, viewWidth * 0.5, viewHeight * 0.5, Math.max(viewWidth, viewHeight));
+      const bg = ctx.createRadialGradient(focalX, focalY, 15, focalX, focalY, Math.max(viewWidth, viewHeight));
       bg.addColorStop(0, colors.bg);
       bg.addColorStop(0.38, colors.start);
       bg.addColorStop(1, colors.bg);
       ctx.fillStyle = bg;
       ctx.fillRect(0, 0, viewWidth, viewHeight);
 
+      // ── Central glow — bright light at focal point ──
+      const glow = ctx.createRadialGradient(focalX, focalY, 0, focalX, focalY, viewWidth * 0.35);
+      glow.addColorStop(0, 'rgba(200, 230, 255, 0.18)');
+      glow.addColorStop(0.3, 'rgba(140, 180, 255, 0.08)');
+      glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, viewWidth, viewHeight);
+
+      // ── Natural vignette — subtle edge darkening ──
+      const vig = ctx.createRadialGradient(focalX, focalY, viewWidth * 0.25, focalX, focalY, viewWidth * 0.75);
+      vig.addColorStop(0, 'rgba(0,0,0,0)');
+      vig.addColorStop(1, 'rgba(0,0,0,0.25)');
+      ctx.fillStyle = vig;
+      ctx.fillRect(0, 0, viewWidth, viewHeight);
+
       // ── Effect overlays ──
-      if (effect === 'fog') {
+      if (eff === 'fog') {
         ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
         ctx.fillRect(0, 0, viewWidth, viewHeight);
       }
-      if (effect === 'depth') {
-        const vig = ctx.createRadialGradient(viewWidth * 0.5, viewHeight * 0.5, viewWidth * 0.2, viewWidth * 0.5, viewHeight * 0.5, viewWidth * 0.7);
-        vig.addColorStop(0, 'rgba(0,0,0,0)');
-        vig.addColorStop(1, 'rgba(0,0,0,0.5)');
-        ctx.fillStyle = vig;
+      if (eff === 'depth') {
+        const vig2 = ctx.createRadialGradient(focalX, focalY, viewWidth * 0.2, focalX, focalY, viewWidth * 0.7);
+        vig2.addColorStop(0, 'rgba(0,0,0,0)');
+        vig2.addColorStop(1, 'rgba(0,0,0,0.5)');
+        ctx.fillStyle = vig2;
         ctx.fillRect(0, 0, viewWidth, viewHeight);
       }
-      if (effect === 'cinematic-lighting') {
+      if (eff === 'cinematic-lighting') {
         const cin = ctx.createLinearGradient(0, 0, viewWidth, viewHeight);
         cin.addColorStop(0, 'rgba(0,0,0,0.3)');
         cin.addColorStop(0.5, 'rgba(0,0,0,0)');
@@ -162,22 +224,22 @@ export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effec
         ctx.fillRect(0, 0, viewWidth, viewHeight);
       }
 
-      // ── Ambient particles (palette-driven) ──
+      // ── Ambient particles (palette-driven, value-mapped) ──
       const particleAlpha =
-        effect === 'glow' ? 0.7 :
-        effect === 'bloom' ? 0.5 :
-        effect === 'fog' ? 0.25 :
-        effect === 'depth' ? 0.35 :
-        effect === 'cinematic-lighting' ? 0.6 :
+        eff === 'glow' ? 0.7 :
+        eff === 'bloom' ? 0.5 :
+        eff === 'fog' ? 0.25 :
+        eff === 'depth' ? 0.35 :
+        eff === 'cinematic-lighting' ? 0.6 :
         0.45;
       const particleT =
-        effect === 'glow' ? 0.8 :
-        effect === 'bloom' ? 0.3 :
-        effect === 'fog' ? 0.5 :
-        effect === 'depth' ? 0.4 :
-        effect === 'cinematic-lighting' ? 0.2 :
+        eff === 'glow' ? 0.8 :
+        eff === 'bloom' ? 0.3 :
+        eff === 'fog' ? 0.5 :
+        eff === 'depth' ? 0.4 :
+        eff === 'cinematic-lighting' ? 0.2 :
         0.5;
-      const pCol = lerpColor3(cStart, cGlow, cEnd, particleT);
+      const pCol = mapValueToColor(particleT, c1, c2, c3);
       for (let index = 0; index < 160; index += 1) {
         const x = ((Math.sin(index * 19.17 + seed) * 0.5 + 0.5) * viewWidth);
         const y = ((Math.cos(index * 13.71 + seed) * 0.5 + 0.5) * viewHeight);
@@ -188,27 +250,30 @@ export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effec
         ctx.fill();
       }
 
-      const centerX = viewWidth / 2 + Math.sin(pulse + seed) * 6;
-      const centerY = viewHeight / 2 + Math.cos(pulse * 0.7 + seed * 0.3) * 5;
-      const scale = Math.min(viewWidth, viewHeight) * 0.44;
+      const centerX = focalX + Math.sin(pulse + seed) * 6;
+      const centerY = focalY + Math.cos(pulse * 0.7 + seed * 0.3) * 5;
 
-      // ── Shadow params ──
+      // ── Compute max coordinate extent to guarantee artwork fits in viewport ──
+      let maxCoord = 0;
+      for (const p of normalized) {
+        if (Math.abs(p.x) > maxCoord) maxCoord = Math.abs(p.x);
+        if (Math.abs(p.y) > maxCoord) maxCoord = Math.abs(p.y);
+      }
+      const scale = (Math.min(viewWidth, viewHeight) * 0.44) / Math.max(1, maxCoord);
+
+      // ── Density scale: fewer points → smaller elements ──
+      const densityScale = Math.min(1, Math.sqrt(normalized.length / 50));
+
+      // ── Shadow params: heavy, from top-left light ──
       const shadowOn = shIntensity > 0;
-      const shRad = (shDirection * Math.PI) / 180;
-      const shDist = shIntensity * 0.6;
-      const shOffX = Math.cos(shRad) * shDist;
-      const shOffY = Math.sin(shRad) * shDist;
-      const shAlpha = 0.3 + (shIntensity / 10) * 0.5;
-      // Fix 4: inverted shadow — dark version of palette glow color
-      const glowRgb = parseHex(colors.glow);
-      const shColor = `rgba(${Math.round(glowRgb[0] * 0.12)},${Math.round(glowRgb[1] * 0.12)},${Math.round(glowRgb[2] * 0.12)},${shAlpha.toFixed(2)})`;
-      // Fix 3: shadow width varies with light angle
-      const lAngleRad = (lAngle * Math.PI) / 180;
-      const shWidthMul = 1.2 + 1.3 * Math.sin(lAngleRad);
-      const isGlowEffect = effect === 'glow' || effect === 'bloom' || effect === 'cinematic-lighting';
+      const shBlur = 25 + (shSoftness / 3) * 10; // 25–35px range
+      const shOffX = -3 - shIntensity * 0.4;  // negative = left
+      const shOffY = 3 + shIntensity * 0.4;   // positive = down
+      const shAlpha = 0.50 + (shIntensity / 10) * 0.40;
+      const isGlowEffect = eff === 'glow' || eff === 'bloom' || eff === 'cinematic-lighting';
 
       const refract = (px: number, py: number): { x: number; y: number } => {
-        if (effect === 'refraction') {
+        if (eff === 'refraction') {
           return {
             x: px + Math.sin(py * 0.02 + seed) * 8,
             y: py + Math.cos(px * 0.02 + seed) * 8,
@@ -231,18 +296,38 @@ export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effec
           const p0 = refract(centerX + visiblePoints[i].x * scale, centerY + visiblePoints[i].y * scale);
           const p1 = refract(centerX + visiblePoints[Math.min(i + segStep, visiblePoints.length - 1)].x * scale, centerY + visiblePoints[Math.min(i + segStep, visiblePoints.length - 1)].y * scale);
 
-          // ── Shadow of this segment (falls on previously drawn content) ──
+          // ── Value-based color (log scale for spread) ──
+          const maxVal = Math.max(1, stats.maxValue);
+          const rawT = visiblePoints[i].value / maxVal;
+          const valT = Math.min(1, Math.log(1 + rawT * 9) / Math.log(10)); // log scale 0→1
+          const lineCol = mapValueToColor(valT, c1, c2, c3);
+
+          // ── Distance-based brightness fade (center → edges) ──
+          const midX = (p0.x + p1.x) * 0.5;
+          const midY = (p0.y + p1.y) * 0.5;
+          const distFromCenter = Math.hypot(midX - focalX, midY - focalY);
+          const maxDist = Math.hypot(viewWidth, viewHeight) * 0.5;
+          const distFade = 1 - Math.min(1, distFromCenter / maxDist) * 0.4;
+
+          // ── Energy fade: peaks bright, valleys dim ──
+          const energyFade = 0.5 + valT * 0.5;
+
+          // ── Variable thickness: thick peaks, thin valleys ──
+          const thickMul = 0.8 + valT * 0.7;
+
+          // ── Shadow of this segment ──
           if (shadowOn) {
+            const shCol = darkenColor(lineCol, 0.3);
             ctx.save();
-            ctx.shadowBlur = shSoftness;
-            ctx.shadowColor = shColor;
+            ctx.shadowBlur = shBlur;
+            ctx.shadowColor = rgbStr(shCol, shAlpha);
             ctx.shadowOffsetX = shOffX;
             ctx.shadowOffsetY = shOffY;
             ctx.beginPath();
             ctx.moveTo(p0.x, p0.y);
             ctx.lineTo(p1.x, p1.y);
-            ctx.strokeStyle = shColor;
-            ctx.lineWidth = lineWidth * shWidthMul;
+            ctx.strokeStyle = rgbStr(shCol, shAlpha);
+            ctx.lineWidth = lw * thickMul * 1.8 * densityScale;
             ctx.stroke();
             ctx.restore();
           }
@@ -253,40 +338,39 @@ export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effec
           const angle = Math.atan2(dy, dx);
 
           const highlight = (Math.sin(angle * 2 + time * 0.0003) * 0.5 + 0.5);
-          const tVal = Math.min(1, i / Math.max(1, visiblePoints.length));
-          const baseCol = lerpColor3(cStart, cGlow, cEnd, tVal);
           const specCol: [number, number, number] = [
-            Math.min(255, baseCol[0] + highlight * 100),
-            Math.min(255, baseCol[1] + highlight * 80),
-            Math.min(255, baseCol[2] + highlight * 60),
+            Math.min(255, lineCol[0] + highlight * 80),
+            Math.min(255, lineCol[1] + highlight * 60),
+            Math.min(255, lineCol[2] + highlight * 40),
           ];
 
           const perpX = -Math.sin(angle);
           const perpY = Math.cos(angle);
-          const halfW = lineWidth * 0.7;
+          const halfW = lw * 0.7;
 
           const grad = ctx.createLinearGradient(
             p0.x + perpX * halfW, p0.y + perpY * halfW,
             p0.x - perpX * halfW, p0.y - perpY * halfW,
           );
-          grad.addColorStop(0, rgbStr(specCol, 0.6));
-          grad.addColorStop(0.35, rgbStr(specCol, 1));
-          grad.addColorStop(0.5, rgbStr(baseCol, 1));
-          grad.addColorStop(0.65, rgbStr(specCol, 1));
-          grad.addColorStop(1, rgbStr(specCol, 0.6));
+          grad.addColorStop(0, rgbStr(specCol, 0.5 * distFade * energyFade));
+          grad.addColorStop(0.35, rgbStr(specCol, 0.9 * distFade * energyFade));
+          grad.addColorStop(0.5, rgbStr(lineCol, 1 * distFade * energyFade));
+          grad.addColorStop(0.65, rgbStr(specCol, 0.9 * distFade * energyFade));
+          grad.addColorStop(1, rgbStr(specCol, 0.5 * distFade * energyFade));
 
           ctx.beginPath();
           ctx.moveTo(p0.x, p0.y);
           ctx.lineTo(p1.x, p1.y);
           ctx.strokeStyle = grad;
-          ctx.lineWidth = lineWidth * 1.2;
+          ctx.lineWidth = lw * thickMul * 1.2 * densityScale;
 
-          if (isGlowEffect) {
-            ctx.shadowBlur = effect === 'glow' ? 24 : effect === 'bloom' ? 16 : 14;
-            ctx.shadowColor = colors.glow;
-            ctx.shadowOffsetX = 0;
-            ctx.shadowOffsetY = 0;
-          }
+          // ── Soft glow on every line (subtle emission) ──
+          ctx.shadowBlur = isGlowEffect
+            ? (eff === 'glow' ? 24 : eff === 'bloom' ? 16 : 14)
+            : 6;
+          ctx.shadowColor = isGlowEffect ? colors.glow : rgbStr(lineCol, 0.4);
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 0;
           ctx.stroke();
           ctx.shadowBlur = 0;
           ctx.shadowColor = 'transparent';
@@ -297,26 +381,29 @@ export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effec
         // ── Point shadows (interleaved, every 3rd point) ──
         if (shadowOn) {
           ctx.save();
-          ctx.shadowBlur = shSoftness;
-          ctx.shadowColor = shColor;
+          ctx.shadowBlur = shBlur;
           ctx.shadowOffsetX = shOffX;
           ctx.shadowOffsetY = shOffY;
           for (let i = 0; i < visiblePoints.length; i += 3) {
             const point = visiblePoints[i];
             const r = refract(centerX + point.x * scale, centerY + point.y * scale);
             const maxVal = Math.max(1, stats.maxValue);
-            const t = Math.min(1, point.value / maxVal);
-            const baseR = pointSize * 0.53 + t * pointSize * 1.33 + (animating ? pulse * 0.3 : 0);
+            const rawT = point.value / maxVal;
+            const t = Math.min(1, Math.log(1 + rawT * 9) / Math.log(10));
+            const baseR = ps * 0.53 + t * ps * 1.33 + (animating ? pulse * 0.3 : 0);
+            const ptCol = mapValueToColor(t, c1, c2, c3);
+            const shCol = darkenColor(ptCol, 0.3);
             ctx.beginPath();
-            ctx.arc(r.x, r.y, Math.max(0.1, baseR * 1.6), 0, Math.PI * 2);
-            ctx.fillStyle = shColor;
+            ctx.arc(r.x, r.y, Math.max(0.1, baseR * 1.2 * densityScale), 0, Math.PI * 2);
+            ctx.fillStyle = rgbStr(shCol, shAlpha);
+            ctx.shadowColor = rgbStr(shCol, shAlpha);
             ctx.fill();
           }
           ctx.restore();
         }
 
         // ── BLOOM OUTER GLOW ──
-        if (effect === 'bloom') {
+        if (eff === 'bloom') {
           const bloomGrad = ctx.createLinearGradient(0, 0, viewWidth, viewHeight);
           bloomGrad.addColorStop(0, colors.start);
           bloomGrad.addColorStop(0.5, colors.glow);
@@ -328,7 +415,7 @@ export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effec
             else ctx.lineTo(r.x, r.y);
           });
           ctx.strokeStyle = bloomGrad;
-          ctx.lineWidth = lineWidth * 3.2;
+          ctx.lineWidth = lw * 3.2 * densityScale;
           ctx.globalAlpha = 0.15;
           ctx.shadowBlur = 40;
           ctx.shadowColor = colors.glow;
@@ -350,13 +437,13 @@ export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effec
             else ctx.lineTo(r.x, r.y);
           });
           ctx.strokeStyle = colors.glow;
-          ctx.lineWidth = lineWidth * 0.6;
+          ctx.lineWidth = lw * 0.6 * densityScale;
           ctx.stroke();
           ctx.restore();
         }
 
         // ── REFLECTION: mirror below ──
-        if (effect === 'reflection') {
+        if (eff === 'reflection') {
           const reflGrad = ctx.createLinearGradient(0, 0, viewWidth, viewHeight);
           reflGrad.addColorStop(0, colors.start);
           reflGrad.addColorStop(0.5, colors.glow);
@@ -372,7 +459,7 @@ export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effec
             else ctx.lineTo(r.x, r.y);
           });
           ctx.strokeStyle = reflGrad;
-          ctx.lineWidth = lineWidth * 0.8;
+          ctx.lineWidth = lw * 0.8 * densityScale;
           ctx.stroke();
           ctx.globalAlpha = 1;
           ctx.restore();
@@ -383,23 +470,30 @@ export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effec
       normalized.slice(0, visibleCount).forEach((point, index) => {
         const r = refract(centerX + point.x * scale, centerY + point.y * scale);
         const maxVal = Math.max(1, stats.maxValue);
-        const t = Math.min(1, point.value / maxVal);
-        const baseRadius = pointSize * 0.53 + t * pointSize * 1.33;
-        const finalRadius = Math.max(0.1, baseRadius + (animating ? pulse * 0.3 : 0));
+        const rawT = point.value / maxVal;
+        const t = Math.min(1, Math.log(1 + rawT * 9) / Math.log(10));
+        const baseRadius = ps * 0.53 + t * ps * 1.33;
+        const finalRadius = Math.max(0.1, (baseRadius + (animating ? pulse * 0.3 : 0)) * densityScale);
 
-        const col = lerpColor3(cStart, cGlow, cEnd, t);
+        const col = mapValueToColor(t, c1, c2, c3);
         const spec = (Math.sin(index * 0.7 + time * 0.0004) * 0.5 + 0.5);
+
+        // Distance-based brightness fade
+        const distFromCenter = Math.hypot(r.x - focalX, r.y - focalY);
+        const maxDist = Math.hypot(viewWidth, viewHeight) * 0.5;
+        const distFade = 1 - Math.min(1, distFromCenter / maxDist) * 0.4;
+
         const ptGrad = ctx.createRadialGradient(
           r.x - finalRadius * 0.3, r.y - finalRadius * 0.3, 0,
           r.x, r.y, finalRadius,
         );
         ptGrad.addColorStop(0, rgbStr([
-          Math.min(255, col[0] + spec * 120),
-          Math.min(255, col[1] + spec * 100),
-          Math.min(255, col[2] + spec * 80),
-        ], 1));
-        ptGrad.addColorStop(0.5, rgbStr(col, 1));
-        ptGrad.addColorStop(1, rgbStr(col, 0.6));
+          Math.min(255, col[0] + spec * 100),
+          Math.min(255, col[1] + spec * 80),
+          Math.min(255, col[2] + spec * 60),
+        ], distFade));
+        ptGrad.addColorStop(0.5, rgbStr(col, 0.9 * distFade));
+        ptGrad.addColorStop(1, rgbStr(col, 0.5 * distFade));
 
         ctx.beginPath();
         ctx.arc(r.x, r.y, finalRadius, 0, Math.PI * 2);
@@ -438,10 +532,17 @@ export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effec
         if (noiseCanvas.width !== noiseW || noiseCanvas.height !== noiseH) {
           noiseCanvas.width = noiseW;
           noiseCanvas.height = noiseH;
+          noiseImgData = noiseCtx.createImageData(noiseW, noiseH);
+          noiseCachedW = noiseW;
+          noiseCachedH = noiseH;
         }
-        const noiseAmount = effect === 'fog' ? 8 : 4;
-        const imgData = noiseCtx.createImageData(noiseW, noiseH);
-        const data = imgData.data;
+        if (!noiseImgData || noiseCachedW !== noiseW || noiseCachedH !== noiseH) {
+          noiseImgData = noiseCtx.createImageData(noiseW, noiseH);
+          noiseCachedW = noiseW;
+          noiseCachedH = noiseH;
+        }
+        const noiseAmount = eff === 'fog' ? 8 : 4;
+        const data = noiseImgData.data;
         for (let i = 0; i < data.length; i += 4) {
           const v = (Math.random() - 0.5) * noiseAmount;
           data[i] = 128 + v;
@@ -449,7 +550,7 @@ export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effec
           data[i + 2] = 128 + v;
           data[i + 3] = 255;
         }
-        noiseCtx.putImageData(imgData, 0, 0);
+        noiseCtx.putImageData(noiseImgData, 0, 0);
         ctx.globalCompositeOperation = 'overlay';
         ctx.globalAlpha = 0.06;
         ctx.drawImage(noiseCanvas, 0, 0, canvas.width, canvas.height);
@@ -480,7 +581,7 @@ export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effec
       if (canvasRef.current === canvas) canvasRef.current = null;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [palette, seed, steps, engine, grid, geometry, effect, customColors?.[0], customColors?.[1], customColors?.[2], lineWidth, pointSize, shadowIntensity, shadowDirection, shadowSoftness, lightAngle]);
+  }, [palette, seed, steps, engine, grid, geometry, effect]);
 
   return (
     <div

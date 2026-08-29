@@ -87,6 +87,12 @@ interface Renderer3DProps {
   animationSpeed: number;
   isAnimating: boolean;
   customColors?: [string, string, string];
+  lineWidth?: number;
+  pointSize?: number;
+  shadowIntensity?: number;
+  shadowDirection?: number;
+  shadowSoftness?: number;
+  lightAngle?: number;
   onCanvasReady?: (canvas: HTMLCanvasElement) => void;
 }
 
@@ -143,17 +149,9 @@ function addLightsToScene(scene: THREE.Scene, presetId: LightPresetId, palette: 
   return helpers;
 }
 
-function mulberry32Fast(seed: number) {
-  let s = seed | 0;
-  return () => {
-    s = (s + 0x6d2b79f5) | 0;
-    let t = Math.imul(s ^ (s >>> 15), 1 | s);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+import { mulberry32 } from '../core/seed';
 
-export function Renderer3D({ seed, steps, palette, engine, grid, geometry, material, effect, lightPreset, motionPreset, cameraPreset: _cameraPreset, animationSpeed, isAnimating, customColors, onCanvasReady }: Renderer3DProps) {
+export function Renderer3D({ seed, steps, palette, engine, grid, geometry, material, effect, lightPreset, motionPreset, cameraPreset: _cameraPreset, animationSpeed, isAnimating, customColors, lineWidth: _lineWidth, pointSize: _pointSize, shadowIntensity: _shadowIntensity, shadowDirection: _shadowDirection, shadowSoftness: _shadowSoftness, lightAngle: _lightAngle, onCanvasReady }: Renderer3DProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -170,6 +168,9 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
   const sphereRef = useRef<THREE.Mesh | null>(null);
   const sphereMatRef = useRef<THREE.ShaderMaterial | null>(null);
   const trailRef = useRef<THREE.Line | null>(null);
+  const tailRef = useRef<THREE.Mesh | null>(null);
+  const palRef = useRef<{ start: string; glow: string; end: string } | null>(null);
+  const sphereRadiusRef = useRef(0.55);
   const drawablesRef = useRef<THREE.Object3D[]>([]);
   const postProcessingRef = useRef<PostProcessingSetup | null>(null);
   const maxValRef = useRef(0);
@@ -212,7 +213,10 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
     } catch {
       canvas.remove();
       if (canvasRef.current === canvas) canvasRef.current = null;
-      container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#f87171;font-size:14px;">WebGL non disponibile</div>';
+      const errDiv = document.createElement('div');
+      errDiv.style.cssText = 'display:flex;align-items:center;justify-content:center;height:100%;color:#f87171;font-size:14px;';
+      errDiv.textContent = 'WebGL non disponibile';
+      container.appendChild(errDiv);
       return;
     }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -341,7 +345,7 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
     const starColors = customColors
       ? { ...starPaletteDef, start: customColors[0], glow: customColors[1], end: customColors[2] }
       : starPaletteDef;
-    const starRand = mulberry32Fast(seed);
+    const starRand = mulberry32(seed);
     const starPositions = new Float32Array(1200 * 3);
     for (let i = 0; i < starPositions.length; i += 3) {
       starPositions[i] = (starRand() - 0.5) * 20;
@@ -376,6 +380,7 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
     const pal = customColors
       ? { ...palDef, start: customColors[0], glow: customColors[1], end: customColors[2] }
       : palDef;
+    palRef.current = pal;
 
     // Progressive tube
     const progressiveTube = createProgressiveTubeMaterial(palette, material);
@@ -397,6 +402,7 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
 
     // ── Liquid sphere — shader-based, moves along curve to draw ──────
     const sphereRadius = 0.55;
+    sphereRadiusRef.current = sphereRadius;
     const sphereMat = new THREE.ShaderMaterial({
       vertexShader: sphereVertexShader,
       fragmentShader: sphereFragmentShader,
@@ -407,6 +413,8 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
         uColor2: { value: new THREE.Color(pal.glow) },
         uColor3: { value: new THREE.Color(pal.end) },
         uOpacity: { value: 0 },
+        uProgress: { value: 0 },
+        uMoveDir: { value: new THREE.Vector3(0, 0, 1) },
       },
       transparent: true,
       depthWrite: false,
@@ -434,6 +442,24 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
     const trail = new THREE.Line(trailGeo, trailMat);
     root.add(trail);
     trailRef.current = trail;
+
+    // ── Conical tail — liquid extrusion from sphere ────────────────────────
+    const tailGeo = new THREE.ConeGeometry(sphereRadius * 0.4, sphereRadius * 2.5, 12, 1);
+    const tailMat = new THREE.MeshPhysicalMaterial({
+      color: new THREE.Color(pal.glow),
+      emissive: new THREE.Color(pal.end),
+      emissiveIntensity: 0.6,
+      transparent: true,
+      opacity: 0.5,
+      roughness: 0.1,
+      metalness: 0.8,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const tailMesh = new THREE.Mesh(tailGeo, tailMat);
+    tailMesh.visible = false;
+    root.add(tailMesh);
+    tailRef.current = tailMesh;
 
     // Line thickness — proportional to sphere for visual harmony
     const lineRadius = sphereRadius * 0.12;
@@ -533,10 +559,7 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
     );
     bboxCenterRef.current.copy(bboxCenter);
 
-    // Debug occupancy
-    const occV = ((projV / (2 * finalDist * Math.tan(vFov * 0.5))) * 100).toFixed(1);
-    const occH = ((projH / (2 * finalDist * Math.tan(hFov * 0.5))) * 100).toFixed(1);
-    console.log(`[Camera] bbox ${bboxSize.x.toFixed(2)}x${bboxSize.y.toFixed(2)}x${bboxSize.z.toFixed(2)} | dist=${finalDist.toFixed(2)} | occ V:${occV}% H:${occH}%`);
+    // Debug occupancy (disabled in production)
 
     // Post-processing
     postProcessingRef.current?.dispose();
@@ -554,9 +577,16 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
       progressiveTubeRef.current = null;
       disposeThreeObject(trailRef.current);
       trailRef.current = null;
+      disposeThreeObject(tailRef.current);
+      tailRef.current = null;
+      disposeThreeObject(sphereRef.current);
+      sphereRef.current = null;
+      sphereMatRef.current = null;
       curveRef.current = null;
+      disposeThreeObject(root);
+      while (root.children.length > 0) root.remove(root.children[0]);
     };
-  }, [seed, steps, engine, grid, geometry, palette, material, effect, customColors]);
+  }, [seed, steps, engine, grid, geometry, palette, material, effect]);
 
   // ── EFFECT 3: Palette/light/fog updates (cheap, no rebuild) ─────────────
   useEffect(() => {
@@ -564,12 +594,14 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
     const starfield = starfieldRef.current;
     const tube = progressiveTubeRef.current;
     const sphereMat = sphereMatRef.current;
+    const trail = trailRef.current;
     if (!scene) return;
 
     const paletteDef = getPalette(palette);
     const colors = customColors
       ? { ...paletteDef, start: customColors[0], glow: customColors[1], end: customColors[2] }
       : paletteDef;
+    palRef.current = colors;
 
     if (effect === 'fog') {
       scene.fog = new THREE.Fog(new THREE.Color(colors.bg), 4, 16);
@@ -587,6 +619,12 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
       (starfield.material as THREE.PointsMaterial).color.set(colors.glow);
     }
 
+    // Update trail color
+    if (trail) {
+      const trailMat = trail.material as THREE.LineBasicMaterial;
+      if (trailMat.color) trailMat.color.set(colors.glow);
+    }
+
     // Update tube colors — setMaterial then override with custom colors
     if (tube) {
       tube.setMaterial(palette, material);
@@ -599,8 +637,10 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
           if (u.uColorEnd) u.uColorEnd.value.set(customColors[2]);
           if (u.uColorGlow) u.uColorGlow.value.set(customColors[1]);
         }
-        tube.material.color.set(customColors[0]);
-        tube.material.emissive.set(customColors[2]);
+        if (tube.material.color) tube.material.color.set(customColors[0]);
+        if ('emissive' in tube.material && tube.material.emissive) {
+          (tube.material as THREE.MeshPhysicalMaterial).emissive.set(customColors[2]);
+        }
       }
     }
 
@@ -646,6 +686,7 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
     const _tmpDir = new THREE.Vector3();
     const _tmpLookAt = new THREE.Vector3();
     const _trailPos = new THREE.Vector3();
+    const _tailColor = new THREE.Color();
 
     // ── Easing functions per motionPreset ────────────────────────────────────
     const applyEasing = (t: number, preset: MotionPresetId): number => {
@@ -699,25 +740,75 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
       const curve = curveRef.current;
       const sphere = sphereRef.current;
       const sphereMat = sphereMatRef.current;
+      const tail = tailRef.current;
       if (curve && sphere && sphereMat) {
         sphereMat.uniforms.uTime.value = time * 0.001;
+        sphereMat.uniforms.uProgress.value = revealT;
         const sphereFade = Math.min(1, easedProgress * 4);
         sphereMat.uniforms.uOpacity.value = sphereFade;
         // Organic breathing — slows down as sphere approaches end
         const breathFade = 1 - easedProgress * 0.5;
         const breathe = 1 + Math.sin(time * 0.0008) * 0.06 * breathFade;
         const morph = 1 + Math.sin(time * 0.0012) * 0.03 * breathFade;
-        sphere.scale.set(breathe * morph, breathe / morph, breathe);
+
         // Move sphere along the curve — smooth deceleration at end
         const t = Math.min(revealT * 0.999, 1);
         const pos = curve.getPointAt(t);
         sphere.position.copy(pos);
+
+        // Compute movement direction for liquid deformation
+        const lookAheadT = Math.min(t + 0.01, 1);
+        const nextPos = curve.getPointAt(lookAheadT);
+        _tmpDir.copy(nextPos).sub(pos);
+        const dirLen = _tmpDir.length();
+        if (dirLen > 0.0001) _tmpDir.divideScalar(dirLen); else _tmpDir.set(0, 0, 1);
+        sphereMat.uniforms.uMoveDir.value.copy(_tmpDir);
+
+        // Non-uniform scale: stretch along movement, squeeze perpendicular
+        const prevProgress = Math.min(1, Math.max(0, (time - drawStartTime - 16)) / drawDuration);
+        const speed = Math.abs(easedProgress - applyEasing(prevProgress, motionPreset));
+        const stretchFactor = 1.0 + Math.min(speed * 8, 0.35);
+        const squeezeFactor = 1.0 / Math.sqrt(stretchFactor);
+        sphere.scale.set(
+          breathe * morph * squeezeFactor,
+          breathe / morph * squeezeFactor,
+          breathe * stretchFactor,
+        );
+
         // Orient sphere tangent to curve
-        if (t < 0.99) {
-          const nextPos = curve.getPointAt(Math.min(t + 0.01, 1));
-          _tmpDir.copy(nextPos).sub(pos).normalize();
+        if (dirLen > 0.0001) {
           _tmpLookAt.copy(pos).add(_tmpDir);
           sphere.lookAt(_tmpLookAt);
+        }
+
+        // ── Conical tail — liquid extrusion behind sphere ──────
+        if (tail && isRevealing && t > 0.02) {
+          tail.visible = true;
+          const tailBaseT = Math.max(0, t - 0.03);
+          const tailBasePos = curve.getPointAt(tailBaseT);
+          // Position tail midpoint between sphere and trail start
+          const midX = (pos.x + tailBasePos.x) * 0.5;
+          const midY = (pos.y + tailBasePos.y) * 0.5;
+          const midZ = (pos.z + tailBasePos.z) * 0.5;
+          tail.position.set(midX, midY, midZ);
+          // Orient tail pointing backward along curve
+          _tmpDir.copy(pos).sub(tailBasePos);
+          if (_tmpDir.lengthSq() > 0.0001) {
+            _tmpDir.normalize();
+            _tmpLookAt.copy(tail.position).add(_tmpDir);
+            tail.lookAt(_tmpLookAt);
+          }
+          // Fade tail as sphere slows
+          const tailOpacity = 0.4 * (1 - easedProgress * 0.6);
+          (tail.material as THREE.MeshPhysicalMaterial).opacity = tailOpacity;
+          // Update tail color to match current palette position
+          const pal = palRef.current;
+          if (pal) {
+            _tailColor.set(pal.glow);
+            (tail.material as THREE.MeshPhysicalMaterial).color.copy(_tailColor);
+          }
+        } else if (tail) {
+          tail.visible = false;
         }
       }
 
@@ -794,9 +885,12 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
           // Phase 3: settle from Phase 2 end → finalPos (continuous)
           const t3 = (p - 0.7) / 0.3;
           const e3 = smoothstep(0, 1, t3);
-          camX = finalPos.x * (1 - e3) + finalPos.x * e3;
-          camY = finalPos.y * (1 - e3) + finalPos.y * e3;
-          camZ = finalPos.z * (1 - e3) + finalPos.z * e3;
+          const p2EndX = finalPos.x;
+          const p2EndY = finalPos.y + 0.3;
+          const p2EndZ = finalPos.z * 0.9;
+          camX = p2EndX * (1 - e3) + finalPos.x * e3;
+          camY = p2EndY * (1 - e3) + finalPos.y * e3;
+          camZ = p2EndZ * (1 - e3) + finalPos.z * e3;
         }
 
         camera.position.set(camX, camY, camZ);
@@ -809,7 +903,7 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
           ? 4 * t * t * t
           : 1 - Math.pow(-2 * t + 2, 3) / 2;
         const finalPos = finalCamPosRef.current;
-        camera.position.lerpVectors(camera.position, finalPos, ease);
+        camera.position.lerp(finalPos, ease);
       }
 
       camera.lookAt(bboxCenterRef.current.x, bboxCenterRef.current.y, bboxCenterRef.current.z);
