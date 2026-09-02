@@ -46,8 +46,8 @@ export type GridId =
   | 'voronoi'
   | 'recursive';
 
-export type PaletteId = 'void' | 'aurora' | 'nebula' | 'solar' | 'ice' | 'inferno';
-export type GeometryMode = 'lines' | 'polygons' | 'tubes' | 'surface' | 'mesh' | 'ribbon' | 'torus' | 'cylinder' | 'cone' | 'branching' | 'network' | 'trail';
+export type PaletteId = 'none' | 'clean' | 'void' | 'aurora' | 'nebula' | 'solar' | 'ice' | 'inferno';
+export type GeometryMode = 'lines' | 'polygons' | 'tubes' | 'surface' | 'mesh' | 'ribbon' | 'network' | 'torus-knot' | 'mobius' | 'helix';
 export type MaterialMode = 'basic' | 'metallic' | 'glass' | 'crystal' | 'gem' | 'holographic';
 export type EffectMode = 'neutral' | 'bloom' | 'glow' | 'depth' | 'reflection' | 'refraction' | 'fog' | 'cinematic-lighting';
 export type LightPresetId = 'standard' | 'cinematic' | 'neon' | 'studio' | 'dark';

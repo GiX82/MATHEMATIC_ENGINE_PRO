@@ -208,7 +208,7 @@ describe('getPalette', () => {
   });
 
   it('works for all palettes', () => {
-    const palettes = ['void', 'aurora', 'nebula', 'solar', 'ice', 'inferno'] as const;
+    const palettes = ['none', 'void', 'aurora', 'nebula', 'solar', 'ice', 'inferno'] as const;
     for (const id of palettes) {
       const p = getPalette(id);
       expect(typeof p.bg).toBe('string');

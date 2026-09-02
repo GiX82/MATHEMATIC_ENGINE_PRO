@@ -1,6 +1,24 @@
 import type { PaletteDefinition, PaletteId } from './types';
 
 export const paletteDefinitions: Record<PaletteId, PaletteDefinition> = {
+  none: {
+    id: 'none',
+    name: 'Nessuno',
+    start: '#C0C5CE',
+    end: '#2E3440',
+    glow: '#F5F7FA',
+    bg: '#0a0a0a',
+    accent: '#6B7280',
+  },
+  clean: {
+    id: 'clean',
+    name: 'Pulito',
+    start: '#e2e8f0',
+    end: '#94a3b8',
+    glow: '#f8fafc',
+    bg: '#0a0a0a',
+    accent: '#9ca3af',
+  },
   void: {
     id: 'void',
     name: 'Vuoto',

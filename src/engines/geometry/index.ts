@@ -33,33 +33,23 @@ const geometryEngines: IGeometryEngine[] = [
     params: [],
   },
   {
-    id: 'torus', name: 'Toro', description: 'Toro rotazionale con materiale PBR.', category: 'geometry',
-    geometryType: 'three-d', premium: true, tags: ['torus', 'rotation', '3d'],
-    params: [],
-  },
-  {
-    id: 'cylinder', name: 'Cilindro', description: 'Cilindri lungo i punti della curva.', category: 'geometry',
-    geometryType: 'three-d', premium: true, tags: ['cylinder', '3d'],
-    params: [],
-  },
-  {
-    id: 'cone', name: 'Cono', description: 'Coni con orientamento variabile.', category: 'geometry',
-    geometryType: 'three-d', premium: true, tags: ['cone', '3d'],
-    params: [],
-  },
-  {
-    id: 'branching', name: 'Rami', description: 'Sistemi ramificati procedurali (alberi, fulmini).', category: 'geometry',
-    geometryType: 'procedural', premium: true, tags: ['branching', 'tree', 'procedural'],
-    params: [],
-  },
-  {
     id: 'network', name: 'Rete', description: 'Grafi con nodi e connessioni.', category: 'geometry',
     geometryType: 'procedural', premium: true, tags: ['network', 'graph', 'procedural'],
     params: [],
   },
   {
-    id: 'trail', name: 'Scia', description: 'Linee di scia lungo la traiettoria.', category: 'geometry',
-    geometryType: 'primitive', premium: true, tags: ['trail', 'path', 'continuous'],
+    id: 'torus-knot', name: 'Nodo Torico', description: 'Nodo torico topologico lungo la curva.', category: 'geometry',
+    geometryType: 'three-d', premium: true, tags: ['torus-knot', 'topology', '3d'],
+    params: [],
+  },
+  {
+    id: 'mobius', name: 'Nastro di Möbius', description: 'Nastro a una faccia con twist.', category: 'geometry',
+    geometryType: 'three-d', premium: true, tags: ['mobius', 'strip', 'twist', '3d'],
+    params: [],
+  },
+  {
+    id: 'helix', name: 'Elica', description: 'Elica spiraliforme lungo la traiettoria.', category: 'geometry',
+    geometryType: 'three-d', premium: true, tags: ['helix', 'spiral', '3d'],
     params: [],
   },
 ];

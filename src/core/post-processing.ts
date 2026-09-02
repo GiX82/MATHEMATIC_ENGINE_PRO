@@ -10,12 +10,24 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import type { EffectMode } from '../domain/types';
+import { createQuantumDispersion, type QuantumDispersionPass } from './effects/quantumDispersion';
+import { createTiltShift, type TiltShiftPass } from './effects/tiltShift';
+import { createAudioShockwave, type AudioShockwavePass } from './effects/audioShockwave';
+
+export interface AdvancedEffectsConfig {
+  dispersion?: number;
+  dofStrength?: number;
+  shockwaveIntensity?: number;
+}
 
 export interface PostProcessingSetup {
   composer: EffectComposer;
   bloom: UnrealBloomPass;
   grainPass: ShaderPass | null;
   refractionPass: ShaderPass | null;
+  dispersionPass: QuantumDispersionPass | null;
+  tiltShiftPass: TiltShiftPass | null;
+  shockwavePass: AudioShockwavePass | null;
   resize: (width: number, height: number) => void;
   dispose: () => void;
 }
@@ -193,15 +205,15 @@ const RefractionShader = {
 function getBloomParams(effect: EffectMode) {
   switch (effect) {
     case 'bloom':
-      return { strength: 0.8, radius: 0.5, threshold: 0.65 };
+      return { strength: 0.6, radius: 0.4, threshold: 0.85 };
     case 'glow':
-      return { strength: 0.5, radius: 0.35, threshold: 0.72 };
+      return { strength: 0.4, radius: 0.3, threshold: 0.88 };
     case 'cinematic-lighting':
-      return { strength: 0.7, radius: 0.5, threshold: 0.6 };
+      return { strength: 0.5, radius: 0.4, threshold: 0.82 };
     case 'depth':
-      return { strength: 0.35, radius: 0.4, threshold: 0.75 };
+      return { strength: 0.3, radius: 0.35, threshold: 0.88 };
     default:
-      return { strength: 0.3, radius: 0.3, threshold: 0.75 };
+      return { strength: 0.25, radius: 0.25, threshold: 0.9 };
   }
 }
 
@@ -210,6 +222,7 @@ export function setupPostProcessing(
   scene: THREE.Scene,
   camera: THREE.Camera,
   effect: EffectMode = 'glow',
+  advancedConfig?: AdvancedEffectsConfig,
 ): PostProcessingSetup | null {
   // Neutral = no post-processing at all
   if (effect === 'neutral') return null;
@@ -272,6 +285,33 @@ export function setupPostProcessing(
     composer.addPass(vignettePass);
   }
 
+  // ── Advanced Effects (modular, toggleable) ──
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  // Quantum Chromatic Dispersion
+  let dispersionEffect: QuantumDispersionPass | null = null;
+  if (advancedConfig && advancedConfig.dispersion && advancedConfig.dispersion > 0) {
+    const adjustedAmount = dpr < 1.5 ? Math.min(advancedConfig.dispersion, 0.1) : advancedConfig.dispersion;
+    dispersionEffect = createQuantumDispersion(adjustedAmount);
+    composer.addPass(dispersionEffect.pass);
+  }
+
+  // Tilt-Shift DOF
+  let tiltShiftEffect: TiltShiftPass | null = null;
+  if (advancedConfig && advancedConfig.dofStrength && advancedConfig.dofStrength > 0) {
+    tiltShiftEffect = createTiltShift(advancedConfig.dofStrength);
+    const size = renderer.getSize(new THREE.Vector2());
+    tiltShiftEffect.setResolution(size.x, size.y);
+    composer.addPass(tiltShiftEffect.pass);
+  }
+
+  // Audio-Reactive Shockwave
+  let shockwaveEffect: AudioShockwavePass | null = null;
+  if (advancedConfig && advancedConfig.shockwaveIntensity && advancedConfig.shockwaveIntensity > 0) {
+    shockwaveEffect = createAudioShockwave(advancedConfig.shockwaveIntensity);
+    composer.addPass(shockwaveEffect.pass);
+  }
+
   // Output pass — handles tone mapping (ACES Filmic) + color space
   const outputPass = new OutputPass();
   composer.addPass(outputPass);
@@ -279,6 +319,7 @@ export function setupPostProcessing(
   const resize = (width: number, height: number) => {
     composer.setSize(width, height);
     bloom.resolution.set(width, height);
+    if (tiltShiftEffect) tiltShiftEffect.setResolution(width, height);
   };
 
   const dispose = () => {
@@ -288,9 +329,12 @@ export function setupPostProcessing(
     if (reflectionPass) reflectionPass.dispose();
     if (refractionPass) refractionPass.dispose();
     if (vignettePass) vignettePass.dispose();
+    if (dispersionEffect) dispersionEffect.dispose();
+    if (tiltShiftEffect) tiltShiftEffect.dispose();
+    if (shockwaveEffect) shockwaveEffect.dispose();
     outputPass.dispose();
     composer.dispose();
   };
 
-  return { composer, bloom, grainPass, refractionPass, resize, dispose };
+  return { composer, bloom, grainPass, refractionPass, dispersionPass: dispersionEffect, tiltShiftPass: tiltShiftEffect, shockwavePass: shockwaveEffect, resize, dispose };
 }

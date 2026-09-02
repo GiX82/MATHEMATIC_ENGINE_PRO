@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import type { MaterialMode } from '../domain/types';
 import type { PaletteKey } from '../lib/math';
 import { getPalette } from '../lib/math';
-import { mulberry32 } from './seed';
 import { registry } from './registry';
 import type { IMaterialEngine } from './plugin';
 
@@ -11,17 +10,25 @@ export interface SceneConfig {
   palette: PaletteKey;
   material: MaterialMode;
   effect: string;
+  customColors?: [string, string, string];
+}
+
+function resolveColors(config: SceneConfig) {
+  const base = getPalette(config.palette);
+  return config.customColors
+    ? { ...base, start: config.customColors[0], glow: config.customColors[1], end: config.customColors[2] }
+    : base;
 }
 
 function createMaterial(config: SceneConfig, overrides: Partial<THREE.MeshPhysicalMaterialParameters> = {}): THREE.MeshPhysicalMaterial {
-  const colors = getPalette(config.palette);
+  const colors = resolveColors(config);
   const engine = registry.get(config.material) as IMaterialEngine | undefined;
   const props = engine?.threeMaterialProps ?? {};
 
   const base: THREE.MeshPhysicalMaterialParameters = {
     color: new THREE.Color((props.color as string) ?? colors.start),
-    emissive: new THREE.Color(colors.end),
-    emissiveIntensity: (props.emissiveIntensity as number) ?? 0.9,
+    emissive: new THREE.Color(colors.start),
+    emissiveIntensity: (props.emissiveIntensity as number) ?? 0.15,
     roughness: (props.roughness as number) ?? 0.15,
     metalness: (props.metalness as number) ?? 0.35,
     clearcoat: (props.clearcoat as number) ?? 0.7,
@@ -45,163 +52,238 @@ export function buildTubeGeometry(
   return new THREE.Mesh(geometry, createMaterial(config));
 }
 
+export function buildLinesGeometry(
+  curve: THREE.CatmullRomCurve3,
+  config: SceneConfig,
+): THREE.Mesh {
+  const colors = resolveColors(config);
+  const radius = 0.008;
+  const geometry = new THREE.TubeGeometry(curve, Math.max(600, 800), radius, 4, false);
+  const mat = new THREE.MeshPhysicalMaterial({
+    color: new THREE.Color(colors.start),
+    emissive: new THREE.Color(colors.start),
+    emissiveIntensity: 0.15,
+    roughness: 0.1,
+    metalness: 0.0,
+    transparent: true,
+    opacity: 0.9,
+    side: THREE.DoubleSide,
+  });
+  return new THREE.Mesh(geometry, mat);
+}
+
+export function buildMeshGeometry(
+  curve: THREE.CatmullRomCurve3,
+  pointCount: number,
+  config: SceneConfig,
+): THREE.Group {
+  const colors = resolveColors(config);
+  const radius = config.material === 'gem' ? 0.11 : config.material === 'crystal' ? 0.09 : 0.07;
+  const geometry = new THREE.TubeGeometry(curve, Math.max(360, pointCount * 4), radius, 6, false);
+  const mat = createMaterial(config, { wireframe: false });
+  const mesh = new THREE.Mesh(geometry, mat);
+
+  const wireGeo = new THREE.TubeGeometry(curve, Math.max(120, pointCount), radius * 1.01, 6, false);
+  const wireMat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(colors.glow),
+    wireframe: true,
+    transparent: true,
+    opacity: 0.25,
+  });
+  const wire = new THREE.Mesh(wireGeo, wireMat);
+
+  const group = new THREE.Group();
+  group.add(mesh);
+  group.add(wire);
+  return group;
+}
+
 export function buildRibbonGeometry(
   curve: THREE.CatmullRomCurve3,
   config: SceneConfig,
 ): THREE.Mesh {
+  const colors = resolveColors(config);
+  const segments = 300;
+  const width = 0.18;
+  const points = curve.getSpacedPoints(segments);
+  const tangents: THREE.Vector3[] = [];
+  for (let i = 0; i < points.length; i++) {
+    const next = points[Math.min(i + 1, points.length - 1)];
+    const prev = points[Math.max(i - 1, 0)];
+    tangents.push(next.clone().sub(prev).normalize());
+  }
+
+  const vertices: number[] = [];
+  const normals: number[] = [];
+  const indices: number[] = [];
+
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    const t = tangents[i];
+    const up = new THREE.Vector3(0, 1, 0);
+    const right = new THREE.Vector3().crossVectors(t, up).normalize();
+    if (right.lengthSq() < 0.01) right.set(1, 0, 0);
+    const twist = Math.sin((i / points.length) * Math.PI * 6) * 0.4;
+    const cosT = Math.cos(twist);
+    const sinT = Math.sin(twist);
+    const offsetA = right.clone().multiplyScalar(-width / 2);
+    const offsetB = right.clone().multiplyScalar(width / 2);
+    const rotatedA = new THREE.Vector3(
+      offsetA.x * cosT - offsetA.y * sinT,
+      offsetA.x * sinT + offsetA.y * cosT,
+      0,
+    );
+    const rotatedB = new THREE.Vector3(
+      offsetB.x * cosT - offsetB.y * sinT,
+      offsetB.x * sinT + offsetB.y * cosT,
+      0,
+    );
+    const pA = p.clone().add(rotatedA);
+    const pB = p.clone().add(rotatedB);
+    vertices.push(pA.x, pA.y, pA.z, pB.x, pB.y, pB.z);
+    const n = new THREE.Vector3().crossVectors(t, rotatedB.clone().sub(rotatedA)).normalize();
+    normals.push(n.x, n.y, n.z, n.x, n.y, n.z);
+    if (i < points.length - 1) {
+      const base = i * 2;
+      indices.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+
+  const mat = createMaterial(config, {
+    side: THREE.DoubleSide,
+    color: new THREE.Color(colors.start),
+    emissive: new THREE.Color(colors.end),
+    emissiveIntensity: 0.15,
+    sheen: 1.0,
+    sheenColor: new THREE.Color(colors.glow),
+    sheenRoughness: 0.3,
+  });
+  return new THREE.Mesh(geometry, mat);
+}
+
+export function buildTorusKnotGeometry(
+  curve: THREE.CatmullRomCurve3,
+  config: SceneConfig,
+): THREE.Mesh {
+  const colors = resolveColors(config);
+  const tubeRadius = config.material === 'gem' ? 0.06 : 0.04;
+  const geometry = new THREE.TubeGeometry(curve, Math.max(500, 600), tubeRadius, 12, false);
+
+  const posAttr = geometry.attributes.position;
+  const count = posAttr.count;
+  for (let i = 0; i < count; i++) {
+    const x = posAttr.getX(i);
+    const y = posAttr.getY(i);
+    const z = posAttr.getZ(i);
+    const angle = Math.atan2(y, x);
+    const r = Math.sqrt(x * x + y * y);
+    const knotR = 0.08 * Math.sin(angle * 3 + z * 4);
+    const knotZ = 0.08 * Math.cos(angle * 2 + z * 3);
+    const rx = r + knotR * Math.cos(angle);
+    const ry = r + knotR * Math.sin(angle);
+    posAttr.setXYZ(i, rx * Math.cos(angle), ry * Math.sin(angle), z + knotZ);
+  }
+  posAttr.needsUpdate = true;
+  geometry.computeVertexNormals();
+
+  const mat = createMaterial(config, {
+    side: THREE.DoubleSide,
+    color: new THREE.Color(colors.start),
+    emissive: new THREE.Color(colors.start),
+    emissiveIntensity: 0.15,
+    iridescence: 0.8,
+    iridescenceIOR: 1.5,
+    sheen: 0.6,
+    sheenColor: new THREE.Color(colors.glow),
+  });
+
+  return new THREE.Mesh(geometry, mat);
+}
+
+export function buildMobiusGeometry(
+  curve: THREE.CatmullRomCurve3,
+  config: SceneConfig,
+): THREE.Mesh {
+  const colors = resolveColors(config);
   const shape = new THREE.Shape();
-  shape.moveTo(-0.15, 0);
-  shape.quadraticCurveTo(0, 0.08, 0.15, 0);
-  shape.quadraticCurveTo(0, -0.08, -0.15, 0);
+  shape.moveTo(-0.12, -0.015);
+  shape.lineTo(0.12, -0.015);
+  shape.lineTo(0.12, 0.015);
+  shape.lineTo(-0.12, 0.015);
+  shape.closePath();
 
-  const extrudeSettings = { steps: 200, bevelEnabled: false, extrudePath: curve };
+  const extrudeSettings = { steps: 300, bevelEnabled: false, extrudePath: curve };
   const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
-  return new THREE.Mesh(geometry, createMaterial(config, { side: THREE.DoubleSide }));
-}
 
-export function buildTorusGeometry(
-  config: SceneConfig,
-  radius = 2,
-  tube = 0.3,
-): THREE.Mesh {
-  const geometry = new THREE.TorusGeometry(radius, tube, 32, 100);
-  return new THREE.Mesh(geometry, createMaterial(config));
-}
-
-export function buildCylinderGeometry(
-  config: SceneConfig,
-  radius = 0.15,
-  height = 4,
-): THREE.Mesh {
-  const geometry = new THREE.CylinderGeometry(radius, radius, height, 32);
-  return new THREE.Mesh(geometry, createMaterial(config));
-}
-
-export function buildConeGeometry(
-  config: SceneConfig,
-  radius = 0.3,
-  height = 2,
-): THREE.Mesh {
-  const geometry = new THREE.ConeGeometry(radius, height, 32);
-  return new THREE.Mesh(geometry, createMaterial(config));
-}
-
-export function buildSphereGeometry(
-  config: SceneConfig,
-  radius = 0.14,
-): THREE.Mesh {
-  const geometry = new THREE.SphereGeometry(radius, 24, 24);
-  return new THREE.Mesh(geometry, createMaterial(config));
-}
-
-export function buildParticleField(
-  points: Array<{ x: number; y: number; z: number; value: number }>,
-  config: SceneConfig,
-  maxValue: number,
-  sizeMultiplier = 1,
-): THREE.Points {
-  const colors = getPalette(config.palette);
-  const positions: number[] = [];
-  const colorArr: number[] = [];
-
-  points.forEach((point, index) => {
-    const depth = Math.sin((index / Math.max(1, points.length - 1)) * Math.PI * 2) * 1.6;
-    const energy = point.value / Math.max(1, maxValue);
-    const radiusBoost = 1 + energy * 1.6;
-    positions.push(point.x * 2.7 * radiusBoost, point.y * 2.7 * radiusBoost, depth);
-    const color = new THREE.Color(colors.start).lerp(new THREE.Color(colors.end), index / Math.max(1, points.length - 1));
-    colorArr.push(color.r, color.g, color.b);
-  });
-
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colorArr, 3));
-
-  const material = new THREE.PointsMaterial({
-    size: 0.07 * sizeMultiplier,
-    vertexColors: true,
-    transparent: true,
-    opacity: config.effect === 'glow' ? 0.9 : 0.75,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-  });
-
-  return new THREE.Points(geometry, material);
-}
-
-export function buildStarfield(
-  seed: number,
-  config: SceneConfig,
-  count = 1800,
-): THREE.Points {
-  const colors = getPalette(config.palette);
-  const rand = mulberry32(seed);
-  const positions = new Float32Array(count * 3);
-
-  for (let i = 0; i < positions.length; i += 3) {
-    positions[i] = (rand() - 0.5) * 18;
-    positions[i + 1] = (rand() - 0.5) * 18;
-    positions[i + 2] = (rand() - 0.5) * 16 - 4;
+  const posAttr = geometry.attributes.position;
+  const count = posAttr.count;
+  for (let i = 0; i < count; i++) {
+    const x = posAttr.getX(i);
+    const y = posAttr.getY(i);
+    const z = posAttr.getZ(i);
+    const t = Math.min(1, Math.max(0, i / 300));
+    const twist = t * Math.PI;
+    const cosT = Math.cos(twist);
+    const sinT = Math.sin(twist);
+    const newY = y * cosT - z * sinT;
+    const newZ = y * sinT + z * cosT;
+    posAttr.setXYZ(i, x, newY, newZ);
   }
+  posAttr.needsUpdate = true;
+  geometry.computeVertexNormals();
 
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-
-  const material = new THREE.PointsMaterial({
-    color: new THREE.Color(colors.glow),
-    size: 0.035,
-    transparent: true,
-    opacity: 0.8,
-    depthWrite: false,
+  const mat = createMaterial(config, {
+    side: THREE.DoubleSide,
+    color: new THREE.Color(colors.start),
+    emissive: new THREE.Color(colors.end),
+    sheen: 1.0,
+    sheenColor: new THREE.Color(colors.glow),
+    sheenRoughness: 0.2,
+    iridescence: 1.0,
+    iridescenceIOR: 2.0,
   });
-
-  return new THREE.Points(geometry, material);
+  return new THREE.Mesh(geometry, mat);
 }
 
-export function buildTracer(
+export function buildHelixGeometry(
+  curve: THREE.CatmullRomCurve3,
   config: SceneConfig,
 ): THREE.Mesh {
-  const colors = getPalette(config.palette);
-  const material = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(colors.accent),
-    emissive: new THREE.Color(colors.glow),
-    emissiveIntensity: 1.4,
-  });
-  return new THREE.Mesh(new THREE.SphereGeometry(0.14, 24, 24), material);
-}
+  const colors = resolveColors(config);
+  const tubeRadius = config.material === 'gem' ? 0.07 : 0.04;
+  const geometry = new THREE.TubeGeometry(curve, 400, tubeRadius, 12, false);
 
-export function buildBranchingSystem(
-  config: SceneConfig,
-  depth = 4,
-  length = 1.5,
-  angle = Math.PI / 6,
-): THREE.Group {
-  const group = new THREE.Group();
-  const material = createMaterial(config, { emissiveIntensity: 0.5 });
-
-  function branch(parent: THREE.Object3D, len: number, dep: number) {
-    if (dep <= 0 || len < 0.1) return;
-
-    const geo = new THREE.CylinderGeometry(0.02 * dep, 0.03 * dep, len, 8);
-    const mesh = new THREE.Mesh(geo, material);
-    mesh.position.y = len / 2;
-    parent.add(mesh);
-
-    const left = new THREE.Group();
-    left.position.y = len;
-    left.rotation.z = angle;
-    parent.add(left);
-    branch(left, len * 0.7, dep - 1);
-
-    const right = new THREE.Group();
-    right.position.y = len;
-    right.rotation.z = -angle;
-    parent.add(right);
-    branch(right, len * 0.7, dep - 1);
+  const posAttr = geometry.attributes.position;
+  const count = posAttr.count;
+  for (let i = 0; i < count; i++) {
+    const x = posAttr.getX(i);
+    const y = posAttr.getY(i);
+    const z = posAttr.getZ(i);
+    const angle = Math.atan2(y, x);
+    const helixPhase = z * 4 + angle;
+    const helixR = 0.10 * Math.sin(helixPhase);
+    const helixZ = 0.10 * Math.cos(helixPhase);
+    posAttr.setXYZ(i, x + helixR * Math.cos(angle + Math.PI / 2), y + helixR * Math.sin(angle + Math.PI / 2), z + helixZ);
   }
+  posAttr.needsUpdate = true;
+  geometry.computeVertexNormals();
 
-  branch(group, length, depth);
-  return group;
+  const mat = createMaterial(config, {
+    color: new THREE.Color(colors.start),
+    emissive: new THREE.Color(colors.end),
+    emissiveIntensity: 0.15,
+    iridescence: 0.9,
+    iridescenceIOR: 1.6,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.02,
+  });
+  return new THREE.Mesh(geometry, mat);
 }
 
 export function buildNetworkStructure(
@@ -210,11 +292,15 @@ export function buildNetworkStructure(
   maxDistance = 2,
 ): THREE.Group {
   const group = new THREE.Group();
-  const colors = getPalette(config.palette);
-  const nodeMaterial = new THREE.MeshStandardMaterial({
+  const colors = resolveColors(config);
+  const nodeMaterial = new THREE.MeshPhysicalMaterial({
     color: new THREE.Color(colors.accent),
     emissive: new THREE.Color(colors.glow),
-    emissiveIntensity: 0.8,
+    emissiveIntensity: 0.15,
+    roughness: 0.15,
+    metalness: 0.4,
+    clearcoat: 0.8,
+    clearcoatRoughness: 0.05,
   });
   const lineMaterial = new THREE.LineBasicMaterial({
     color: new THREE.Color(colors.start),
@@ -252,21 +338,4 @@ export function buildNetworkStructure(
   }
 
   return group;
-}
-
-export function buildTrailSystem(
-  curve: THREE.CatmullRomCurve3,
-  config: SceneConfig,
-  trailLength = 100,
-): THREE.Line {
-  const colors = getPalette(config.palette);
-  const points = curve.getPoints(trailLength);
-  const geometry = new THREE.BufferGeometry().setFromPoints(points);
-  const material = new THREE.LineBasicMaterial({
-    color: new THREE.Color(colors.start),
-    transparent: true,
-    opacity: 0.6,
-    linewidth: 2,
-  });
-  return new THREE.Line(geometry, material);
 }

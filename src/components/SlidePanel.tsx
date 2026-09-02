@@ -19,7 +19,7 @@ import { paletteDefinitions } from '../domain/palettes';
 import type { GeneratorEngine, PaletteKey, SpatialGrid } from '../lib/math';
 import type { ArtCanvasHandle } from './ArtCanvas';
 
-const freePaletteKeys: PaletteKey[] = ['void', 'aurora', 'nebula'];
+const freePaletteKeys: PaletteKey[] = ['none', 'void', 'aurora', 'nebula'];
 const languages = [
   { code: 'it', label: 'Italiano' },
   { code: 'en', label: 'English' },
@@ -86,20 +86,25 @@ export function SlidePanel({ isOpen, onClose, artCanvasRef }: SlidePanelProps) {
   const {
     steps, mode, engine, grid, palette, geometry, material, effect,
     lightPreset, motionPreset, cameraPreset,
-    customColors, lineWidth, pointSize, shadowIntensity, shadowDirection, shadowSoftness, lightAngle, animationDuration,
+    customColors, customColorsPreset, lineWidth, pointSize, shadowIntensity, shadowDirection, shadowSoftness, lightAngle, animationDuration, backgroundMode,
+    fogDensity, dispersion, stardustDensity, stardustReactivity, shockwaveIntensity, dofStrength,
     setSteps, setMode, setEngine, setGrid, setPalette, setGeometry,
     setMaterial, setEffect, setLightPreset, setMotionPreset, setCameraPreset,
     setCustomColor, setLineWidth, setPointSize,
     setShadowIntensity, setShadowDirection, setShadowSoftness, setLightAngle,
-    setAnimationDuration,
+    setAnimationDuration, setBackgroundMode,
+    setFogDensity, setDispersion, setStardustDensity, setStardustReactivity, setShockwaveIntensity, setDofStrength,
     randomize,
   } = useArtworkStore(useShallow((s) => ({
     steps: s.steps, mode: s.mode, engine: s.engine, grid: s.grid,
     palette: s.palette, geometry: s.geometry, material: s.material, effect: s.effect,
     lightPreset: s.lightPreset, motionPreset: s.motionPreset, cameraPreset: s.cameraPreset,
-    customColors: s.customColors, lineWidth: s.lineWidth, pointSize: s.pointSize,
+    customColors: s.customColors, customColorsPreset: s.customColorsPreset, lineWidth: s.lineWidth, pointSize: s.pointSize,
     shadowIntensity: s.shadowIntensity, shadowDirection: s.shadowDirection, shadowSoftness: s.shadowSoftness,
-    lightAngle: s.lightAngle, animationDuration: s.animationDuration,
+    lightAngle: s.lightAngle, animationDuration: s.animationDuration, backgroundMode: s.backgroundMode,
+    fogDensity: s.fogDensity, dispersion: s.dispersion,
+    stardustDensity: s.stardustDensity, stardustReactivity: s.stardustReactivity,
+    shockwaveIntensity: s.shockwaveIntensity, dofStrength: s.dofStrength,
     setSteps: s.setSteps, setMode: s.setMode, setEngine: s.setEngine, setGrid: s.setGrid,
     setPalette: s.setPalette, setGeometry: s.setGeometry, setMaterial: s.setMaterial,
     setEffect: s.setEffect, setLightPreset: s.setLightPreset, setMotionPreset: s.setMotionPreset,
@@ -107,9 +112,27 @@ export function SlidePanel({ isOpen, onClose, artCanvasRef }: SlidePanelProps) {
     setLineWidth: s.setLineWidth, setPointSize: s.setPointSize,
     setShadowIntensity: s.setShadowIntensity, setShadowDirection: s.setShadowDirection,
     setShadowSoftness: s.setShadowSoftness, setLightAngle: s.setLightAngle,
-    setAnimationDuration: s.setAnimationDuration,
+    setAnimationDuration: s.setAnimationDuration, setBackgroundMode: s.setBackgroundMode,
+    setFogDensity: s.setFogDensity, setDispersion: s.setDispersion,
+    setStardustDensity: s.setStardustDensity, setStardustReactivity: s.setStardustReactivity,
+    setShockwaveIntensity: s.setShockwaveIntensity, setDofStrength: s.setDofStrength,
     randomize: s.randomize,
   })));
+
+  useEffect(() => {
+    if (!customColorsPreset) {
+      const pal = paletteDefinitions[palette as PaletteId];
+      if (pal) {
+        setCustomColor(0, pal.start);
+        setCustomColor(1, pal.glow);
+        setCustomColor(2, pal.end);
+      }
+    }
+    if (palette === 'clean') {
+      setEffect('neutral');
+    }
+  }, [palette, customColorsPreset, setCustomColor, setEffect]);
+
   const { premium, togglePremium } = useUserStore(useShallow((s) => ({
     premium: s.premium, togglePremium: s.togglePremium,
   })));
@@ -265,7 +288,7 @@ export function SlidePanel({ isOpen, onClose, artCanvasRef }: SlidePanelProps) {
                 <input
                   type="range"
                   min="0.5"
-                  max="15"
+                  max="20"
                   step="0.5"
                   value={lineWidth}
                   onChange={(e) => setLineWidth(parseFloat(e.target.value))}
@@ -343,6 +366,25 @@ export function SlidePanel({ isOpen, onClose, artCanvasRef }: SlidePanelProps) {
                   aria-label={t('light_angle')}
                 />
                 <span className="text-[10px] text-zinc-400 w-6 text-right">{lightAngle}°</span>
+              </div>
+              {/* Background mode selector */}
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] text-zinc-500 w-20">{t('background')}</label>
+                <div className="flex gap-1 flex-1">
+                  {(['none', 'mosaic', 'tunnel'] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      onClick={() => setBackgroundMode(mode)}
+                      className={`flex-1 rounded px-1.5 py-0.5 text-[10px] font-medium transition ${
+                        backgroundMode === mode
+                          ? 'bg-cyan-600 text-white'
+                          : 'bg-zinc-700 text-zinc-400 hover:bg-zinc-600'
+                      }`}
+                    >
+                      {t(`bg_${mode}`)}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           </PanelSection>
@@ -439,6 +481,103 @@ export function SlidePanel({ isOpen, onClose, artCanvasRef }: SlidePanelProps) {
               feature="material"
               premium={premium}
             />
+          </PanelSection>
+          )}
+
+          {/* 3D Controls */}
+          {mode === '3d' && (
+          <PanelSection title={t('controls_2d')}>
+            <div className="grid gap-2">
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] text-zinc-500 w-20">{t('thickness')}</label>
+                <input
+                  type="range"
+                  min="0.5"
+                  max="20"
+                  step="0.5"
+                  value={lineWidth}
+                  onChange={(e) => setLineWidth(parseFloat(e.target.value))}
+                  className="flex-1 accent-cyan-400"
+                  aria-label={t('thickness')}
+                />
+                <span className="text-[10px] text-zinc-400 w-6 text-right">{lineWidth}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] text-zinc-500 w-20">{t('shadow')}</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="10"
+                  step="1"
+                  value={shadowIntensity}
+                  onChange={(e) => setShadowIntensity(parseInt(e.target.value, 10))}
+                  className="flex-1 accent-cyan-400"
+                  aria-label={t('shadow')}
+                />
+                <span className="text-[10px] text-zinc-400 w-6 text-right">{shadowIntensity}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] text-zinc-500 w-20">{t('direction')}</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="360"
+                  step="15"
+                  value={shadowDirection}
+                  onChange={(e) => setShadowDirection(parseInt(e.target.value, 10))}
+                  className="flex-1 accent-cyan-400"
+                  aria-label={t('direction')}
+                />
+                <span className="text-[10px] text-zinc-400 w-6 text-right">{shadowDirection}°</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] text-zinc-500 w-20">{t('softness')}</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="3"
+                  step="1"
+                  value={shadowSoftness}
+                  onChange={(e) => setShadowSoftness(parseInt(e.target.value, 10))}
+                  className="flex-1 accent-cyan-400"
+                  aria-label={t('softness')}
+                />
+                <span className="text-[10px] text-zinc-400 w-6 text-right">{shadowSoftness}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] text-zinc-500 w-20">{t('light_angle')}</label>
+                <input
+                  type="range"
+                  min="15"
+                  max="90"
+                  step="5"
+                  value={lightAngle}
+                  onChange={(e) => setLightAngle(parseInt(e.target.value, 10))}
+                  className="flex-1 accent-cyan-400"
+                  aria-label={t('light_angle')}
+                />
+                <span className="text-[10px] text-zinc-400 w-6 text-right">{lightAngle}°</span>
+              </div>
+              {/* Background mode selector */}
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] text-zinc-500 w-20">{t('background')}</label>
+                <div className="flex gap-1 flex-1">
+                  {(['none', 'mosaic', 'tunnel'] as const).map((bgMode) => (
+                    <button
+                      key={bgMode}
+                      onClick={() => setBackgroundMode(bgMode)}
+                      className={`flex-1 rounded px-1.5 py-0.5 text-[10px] font-medium transition ${
+                        backgroundMode === bgMode
+                          ? 'bg-cyan-600 text-white'
+                          : 'bg-zinc-700 text-zinc-400 hover:bg-zinc-600'
+                      }`}
+                    >
+                      {t(`bg_${bgMode}`)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
           </PanelSection>
           )}
 
@@ -572,6 +711,108 @@ export function SlidePanel({ isOpen, onClose, artCanvasRef }: SlidePanelProps) {
             </div>
           </PanelSection>
 
+          {/* Advanced Effects */}
+          <PanelSection title={t('advanced_effects')}>
+            <div className="space-y-3">
+              {/* Fog */}
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] text-zinc-500 w-20">{t('fog')}</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={fogDensity}
+                  onChange={(e) => setFogDensity(parseFloat(e.target.value))}
+                  className="flex-1 accent-cyan-400"
+                  aria-label={t('fog')}
+                />
+                <span className="text-[10px] text-zinc-400 w-6 text-right">{fogDensity.toFixed(1)}</span>
+              </div>
+              {/* Dispersion */}
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] text-zinc-500 w-20">{t('dispersion')}</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={dispersion}
+                  onChange={(e) => setDispersion(parseFloat(e.target.value))}
+                  className="flex-1 accent-cyan-400"
+                  aria-label={t('dispersion')}
+                />
+                <span className="text-[10px] text-zinc-400 w-6 text-right">{dispersion.toFixed(1)}</span>
+              </div>
+              {/* Stardust Density */}
+              {mode === '3d' && (
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] text-zinc-500 w-20">{t('stardust')}</label>
+                <input
+                  type="range"
+                  min="500"
+                  max="5000"
+                  step="100"
+                  value={stardustDensity}
+                  onChange={(e) => setStardustDensity(parseInt(e.target.value, 10))}
+                  className="flex-1 accent-cyan-400"
+                  aria-label={t('stardust')}
+                />
+                <span className="text-[10px] text-zinc-400 w-6 text-right">{stardustDensity}</span>
+              </div>
+              )}
+              {/* Stardust Reactivity */}
+              {mode === '3d' && stardustDensity > 0 && (
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] text-zinc-500 w-20">{t('reactivity')}</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={stardustReactivity}
+                  onChange={(e) => setStardustReactivity(parseFloat(e.target.value))}
+                  className="flex-1 accent-cyan-400"
+                  aria-label={t('reactivity')}
+                />
+                <span className="text-[10px] text-zinc-400 w-6 text-right">{stardustReactivity.toFixed(1)}</span>
+              </div>
+              )}
+              {/* Shockwave */}
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] text-zinc-500 w-20">{t('shockwave')}</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={shockwaveIntensity}
+                  onChange={(e) => setShockwaveIntensity(parseFloat(e.target.value))}
+                  className="flex-1 accent-cyan-400"
+                  aria-label={t('shockwave')}
+                />
+                <span className="text-[10px] text-zinc-400 w-6 text-right">{shockwaveIntensity.toFixed(1)}</span>
+              </div>
+              {/* DOF */}
+              {mode === '3d' && (
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] text-zinc-500 w-20">{t('dof')}</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={dofStrength}
+                  onChange={(e) => setDofStrength(parseFloat(e.target.value))}
+                  className="flex-1 accent-cyan-400"
+                  aria-label={t('dof')}
+                />
+                <span className="text-[10px] text-zinc-400 w-6 text-right">{dofStrength.toFixed(1)}</span>
+              </div>
+              )}
+            </div>
+          </PanelSection>
+
           {/* Premium */}
           <div className="py-4">
             <button
@@ -594,6 +835,14 @@ export function SlidePanel({ isOpen, onClose, artCanvasRef }: SlidePanelProps) {
 
   function handleExportPNG() {
     try {
+      // Try hi-res export first (3D mode with render target)
+      const hiRes = artCanvasRef?.current?.exportHiRes;
+      if (hiRes) {
+        hiRes(2);
+        onClose();
+        return;
+      }
+      // Fallback: direct canvas capture (2D or 3D viewport)
       const canvas = artCanvasRef?.current?.getCanvas();
       if (!canvas) return;
       const link = document.createElement('a');

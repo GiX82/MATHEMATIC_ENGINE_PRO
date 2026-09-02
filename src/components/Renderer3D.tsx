@@ -20,13 +20,13 @@ function disposeThreeObject(obj: THREE.Object3D | null | undefined) {
 }
 
 import {
+  buildLinesGeometry,
+  buildMeshGeometry,
   buildRibbonGeometry,
-  buildTorusGeometry,
-  buildCylinderGeometry,
-  buildConeGeometry,
-  buildBranchingSystem,
+  buildTorusKnotGeometry,
+  buildMobiusGeometry,
+  buildHelixGeometry,
   buildNetworkStructure,
-  buildTrailSystem,
   type SceneConfig,
 } from '../core/geometry-builder';
 import { registry } from '../core/registry';
@@ -36,6 +36,8 @@ import type { PostProcessingSetup } from '../core/post-processing';
 import { createGPUParticles, createAmbientDust } from '../core/gpu-particles';
 import { createProgressiveTubeMaterial } from '../core/progressive-tube';
 import { sphereVertexShader, sphereFragmentShader } from '../core/sphere-shader';
+import { createTunnelBackground, type TunnelBackground } from '../core/tunnel-background';
+import { createCosmicStardust, type CosmicStardustSystem } from '../core/effects/cosmicStardust';
 
 // ── Iridescent material factory — cangiante effect ───────────────────────
 function createIridescentMaterial(
@@ -93,6 +95,15 @@ interface Renderer3DProps {
   shadowDirection?: number;
   shadowSoftness?: number;
   lightAngle?: number;
+  backgroundMode?: 'none' | 'mosaic' | 'tunnel';
+  fogDensity?: number;
+  dispersion?: number;
+  stardustDensity?: number;
+  stardustReactivity?: number;
+  shockwaveIntensity?: number;
+  dofStrength?: number;
+  onResetCamera?: () => void;
+  onExportHiRes?: (fn: (scale?: number) => void) => void;
   onCanvasReady?: (canvas: HTMLCanvasElement) => void;
 }
 
@@ -105,12 +116,12 @@ function addLightsToScene(scene: THREE.Scene, presetId: LightPresetId, palette: 
     : paletteDef;
 
   if (lights.length === 0) {
-    const ambient = new THREE.AmbientLight(new THREE.Color(colors.start).multiplyScalar(0.6), 0.4);
+    const ambient = new THREE.AmbientLight(new THREE.Color(colors.start).multiplyScalar(0.6), 0.35);
     scene.add(ambient);
-    const key = new THREE.DirectionalLight(new THREE.Color(colors.start), 0.9);
+    const key = new THREE.DirectionalLight(new THREE.Color(colors.start), 0.7);
     key.position.set(5, 4, 6);
     scene.add(key);
-    const rim = new THREE.DirectionalLight(new THREE.Color(colors.glow), 0.5);
+    const rim = new THREE.DirectionalLight(new THREE.Color(colors.glow), 0.4);
     rim.position.set(-5, -2, 4);
     scene.add(rim);
     return [];
@@ -150,8 +161,9 @@ function addLightsToScene(scene: THREE.Scene, presetId: LightPresetId, palette: 
 }
 
 import { mulberry32 } from '../core/seed';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
-export function Renderer3D({ seed, steps, palette, engine, grid, geometry, material, effect, lightPreset, motionPreset, cameraPreset: _cameraPreset, animationSpeed, isAnimating, customColors, lineWidth: _lineWidth, pointSize: _pointSize, shadowIntensity: _shadowIntensity, shadowDirection: _shadowDirection, shadowSoftness: _shadowSoftness, lightAngle: _lightAngle, onCanvasReady }: Renderer3DProps) {
+export function Renderer3D({ seed, steps, palette, engine, grid, geometry, material, effect, lightPreset, motionPreset, cameraPreset, animationSpeed, isAnimating, customColors, lineWidth = 2.5, pointSize: _pointSize = 3, shadowIntensity: _shadowIntensity, shadowDirection: _shadowDirection, shadowSoftness: _shadowSoftness, lightAngle, backgroundMode = 'none', fogDensity = 0, dispersion = 0, stardustDensity = 0, stardustReactivity = 0, shockwaveIntensity = 0, dofStrength = 0, onResetCamera, onExportHiRes, onCanvasReady }: Renderer3DProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -168,7 +180,6 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
   const sphereRef = useRef<THREE.Mesh | null>(null);
   const sphereMatRef = useRef<THREE.ShaderMaterial | null>(null);
   const trailRef = useRef<THREE.Line | null>(null);
-  const tailRef = useRef<THREE.Mesh | null>(null);
   const palRef = useRef<{ start: string; glow: string; end: string } | null>(null);
   const sphereRadiusRef = useRef(0.55);
   const drawablesRef = useRef<THREE.Object3D[]>([]);
@@ -179,6 +190,22 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
   const bboxCenterRef = useRef(new THREE.Vector3(0, 0, 0));
 
   const lightHelpersRef = useRef<THREE.Light[]>([]);
+  const tunnelRef = useRef<TunnelBackground | null>(null);
+  const mosaicMeshRef = useRef<THREE.Mesh | null>(null);
+  const mosaicTextureRef = useRef<HTMLCanvasElement | null>(null);
+  const stardustRef = useRef<CosmicStardustSystem | null>(null);
+  const cameraSpeedRef = useRef(0);
+  const prevCamPosRef = useRef(new THREE.Vector3());
+  const controlsRef = useRef<OrbitControls | null>(null);
+  const isAnimationDoneRef = useRef(false);
+  const cameraTransitionRef = useRef<{ active: boolean; startPos: THREE.Vector3; endPos: THREE.Vector3; startTime: number; duration: number } | null>(null);
+  const idealDistanceRef = useRef(7.5);
+  const onResetCameraRef = useRef(onResetCamera);
+  onResetCameraRef.current = onResetCamera;
+  const onExportHiResRef = useRef(onExportHiRes);
+  onExportHiResRef.current = onExportHiRes;
+  const customColorsRef = useRef(customColors);
+  customColorsRef.current = customColors;
 
   // ── EFFECT 1: One-time renderer + scene setup ────────────────────────────
   useEffect(() => {
@@ -225,6 +252,101 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
 
     const root = new THREE.Group();
     scene.add(root);
+
+    // OrbitControls — disabled during animation, enabled after reveal
+    const controls = new OrbitControls(camera, canvas);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.enablePan = true;
+    controls.enableRotate = true;
+    controls.enableZoom = true;
+    controls.minDistance = 2;
+    controls.maxDistance = 50;
+    controls.target.set(0, 0, 0);
+    controls.enabled = false;
+    controlsRef.current = controls;
+    isAnimationDoneRef.current = false;
+
+    // Register reset camera function with parent
+    const resetCamera = () => {
+      const cam = cameraRef.current;
+      const ctrl = controlsRef.current;
+      if (!cam || !ctrl) return;
+      ctrl.enabled = false;
+      isAnimationDoneRef.current = false;
+      cameraTransitionRef.current = {
+        active: true,
+        startPos: cam.position.clone(),
+        endPos: finalCamPosRef.current.clone(),
+        startTime: performance.now(),
+        duration: 1500,
+      };
+    };
+    // Register with parent so it can expose via handle
+    onResetCameraRef.current?.(resetCamera);
+
+    // High-res export function — temporarily resizes viewport, renders, captures
+    const exportHiRes = (scale = 2) => {
+      const r = rendererRef.current;
+      const sc = sceneRef.current;
+      const cam = cameraRef.current;
+      if (!r || !sc || !cam) return;
+
+      const dpr = window.devicePixelRatio || 1;
+      const origW = r.domElement.clientWidth;
+      const origH = r.domElement.clientHeight;
+      const w = Math.round(origW * scale);
+      const h = Math.round(origH * scale);
+
+      // Save camera state
+      const origAspect = (cam as THREE.PerspectiveCamera).aspect;
+      (cam as THREE.PerspectiveCamera).aspect = w / h;
+      (cam as THREE.PerspectiveCamera).updateProjectionMatrix();
+
+      // Resize renderer to high-res
+      r.setSize(w, h, false);
+      r.setPixelRatio(1);
+      postProcessingRef.current?.resize(w, h);
+
+      // Render — disable controls temporarily to prevent interference
+      const ctrl = controlsRef.current;
+      if (ctrl) ctrl.enabled = false;
+      const pp = postProcessingRef.current;
+      if (pp) {
+        pp.composer.render();
+      } else {
+        r.render(sc, cam);
+      }
+
+      // Capture from canvas (preserveDrawingBuffer is true)
+      const dataUrl = r.domElement.toDataURL('image/png');
+
+      // Restore original size
+      (cam as THREE.PerspectiveCamera).aspect = origAspect;
+      (cam as THREE.PerspectiveCamera).updateProjectionMatrix();
+      r.setSize(origW, origH, false);
+      r.setPixelRatio(dpr);
+      postProcessingRef.current?.resize(origW, origH);
+
+      // Re-render at viewport size for display
+      if (pp) {
+        pp.composer.render();
+      } else {
+        r.render(sc, cam);
+      }
+
+      // Download
+      const link = document.createElement('a');
+      link.download = `math-engine-hires-${Date.now()}.png`;
+      link.href = dataUrl;
+      link.click();
+    };
+    onExportHiResRef.current?.(exportHiRes);
+
+    // Fog — controlled by fogDensity slider
+    if (fogDensity > 0) {
+      scene.fog = new THREE.FogExp2(0x030711, fogDensity * 0.06);
+    }
 
     rendererRef.current = renderer;
     sceneRef.current = scene;
@@ -292,6 +414,15 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
     const renderer = rendererRef.current;
     if (!scene || !root || !camera || !renderer) return;
 
+    // Reset animation and controls state for new seed/geometry
+    isAnimationDoneRef.current = false;
+    cameraTransitionRef.current = null;
+    const controls = controlsRef.current;
+    if (controls) {
+      controls.enabled = false;
+      controls.target.set(0, 0, 0);
+    }
+
     // Dispose previous objects
     disposeThreeObject(starfieldRef.current);
     starfieldRef.current = null;
@@ -325,19 +456,32 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
     });
 
     // Remap points to radiate outward from sphere surface
-    const surfacePoints = points3D.map((p) => {
-      const dir = p.clone().normalize();
-      const dist = p.length();
-      const pushed = Math.max(dist, 0.9);
-      return dir.multiplyScalar(pushed);
-    });
+    const surfacePoints = points3D
+      .map((p) => {
+        const dir = p.clone().normalize();
+        const dist = p.length();
+        const pushed = Math.max(dist, 0.9);
+        return dir.multiplyScalar(pushed);
+      })
+      .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z));
+    if (surfacePoints.length < 2) {
+      // Not enough valid points to build a curve — skip expensive rebuild
+      return;
+    }
     const surfaceCurve = new THREE.CatmullRomCurve3(surfacePoints);
+    let curveLength: number;
+    try {
+      curveLength = surfaceCurve.getLength();
+    } catch {
+      return;
+    }
+    if (!Number.isFinite(curveLength) || curveLength < 1e-6) return;
     curveRef.current = surfaceCurve;
 
     // Starfield
     const starPaletteDef = getPalette(palette);
-    const starColors = customColors
-      ? { ...starPaletteDef, start: customColors[0], glow: customColors[1], end: customColors[2] }
+    const starColors = customColorsRef.current
+      ? { ...starPaletteDef, start: customColorsRef.current[0], glow: customColorsRef.current[1], end: customColorsRef.current[2] }
       : starPaletteDef;
     const starRand = mulberry32(seed);
     const starPositions = new Float32Array(1200 * 3);
@@ -360,42 +504,101 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
     starfieldRef.current = starField;
 
     // GPU particles
-    const gpuParticles = createGPUParticles(surfaceCurve, palette, seed, 800, customColors);
-    root.add(gpuParticles.points);
-    gpuParticlesRef.current = gpuParticles;
+    const gpuParticles = createGPUParticles(surfaceCurve, palette, seed, 800, customColorsRef.current);
+    if (gpuParticles) {
+      root.add(gpuParticles.points);
+      gpuParticlesRef.current = gpuParticles;
+    }
 
     // Ambient dust
-    const ambientDust = createAmbientDust(palette, seed, 400, customColors);
+    const ambientDust = createAmbientDust(palette, seed, 400, customColorsRef.current);
     root.add(ambientDust.points);
     ambientDustRef.current = ambientDust;
 
     // Palette + custom colors
     const palDef = getPalette(palette);
-    const pal = customColors
-      ? { ...palDef, start: customColors[0], glow: customColors[1], end: customColors[2] }
+    const pal = customColorsRef.current
+      ? { ...palDef, start: customColorsRef.current[0], glow: customColorsRef.current[1], end: customColorsRef.current[2] }
       : palDef;
     palRef.current = pal;
 
-    // Progressive tube
-    const progressiveTube = createProgressiveTubeMaterial(palette, material);
-    const tubeUniforms = (progressiveTube.material.userData as Record<string, unknown>).shader;
-    if (tubeUniforms && typeof tubeUniforms === 'object' && 'uniforms' in tubeUniforms) {
-      const u = (tubeUniforms as { uniforms: Record<string, { value: THREE.Color }> }).uniforms;
-      if (u.uColorStart) u.uColorStart.value.set(pal.start);
-      if (u.uColorEnd) u.uColorEnd.value.set(pal.end);
-      if (u.uColorGlow) u.uColorGlow.value.set(pal.glow);
-    }
-    progressiveTube.material.color.set(pal.start);
-    progressiveTube.material.emissive.set(pal.end);
+    // Progressive tube — pass customColors so shader uses them from creation
+    const progressiveTube = createProgressiveTubeMaterial(palette, material, customColorsRef.current);
     progressiveTubeRef.current = progressiveTube;
+
+    // ── Tunnel background (if enabled) ──
+    if (backgroundMode === 'tunnel') {
+      tunnelRef.current = createTunnelBackground(palette, customColorsRef.current);
+      scene.add(tunnelRef.current.group);
+    }
+
+    // ── Mosaic background (if enabled) ──
+    if (backgroundMode === 'mosaic') {
+      const size = 2048;
+      const cols = 32;
+      const rows = 32;
+      const cellW = size / cols;
+      const cellH = size / rows;
+      const mosaicCanvas = document.createElement('canvas');
+      mosaicCanvas.width = size;
+      mosaicCanvas.height = size;
+      const mCtx = mosaicCanvas.getContext('2d')!;
+      const palDef = getPalette(palette);
+      const mc = customColorsRef.current
+        ? { ...palDef, start: customColorsRef.current[0], glow: customColorsRef.current[1], end: customColorsRef.current[2] }
+        : palDef;
+      const parseHexLocal = (hex: string): [number, number, number] => {
+        const h = hex.replace('#', '');
+        return [parseInt(h.substring(0, 2), 16), parseInt(h.substring(2, 4), 16), parseInt(h.substring(4, 6), 16)];
+      };
+      const c1 = parseHexLocal(mc.start);
+      const c2 = parseHexLocal(mc.glow);
+      const c3 = parseHexLocal(mc.end);
+      const bgC = parseHexLocal(mc.bg);
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const t = (c / cols + r / rows) * 0.5;
+          let cellColor: [number, number, number];
+          if (t < 0.33) {
+            cellColor = [c1[0] + (c2[0] - c1[0]) * (t / 0.33), c1[1] + (c2[1] - c1[1]) * (t / 0.33), c1[2] + (c2[2] - c1[2]) * (t / 0.33)];
+          } else if (t < 0.66) {
+            const u = (t - 0.33) / 0.33;
+            cellColor = [c2[0] + (c3[0] - c2[0]) * u, c2[1] + (c3[1] - c2[1]) * u, c2[2] + (c3[2] - c2[2]) * u];
+          } else {
+            const u = (t - 0.66) / 0.34;
+            cellColor = [c3[0] + (bgC[0] - c3[0]) * u, c3[1] + (bgC[1] - c3[1]) * u, c3[2] + (bgC[2] - c3[2]) * u];
+          }
+          const alpha = 0.15 + Math.random() * 0.1;
+          mCtx.fillStyle = `rgba(${Math.round(cellColor[0])},${Math.round(cellColor[1])},${Math.round(cellColor[2])},${alpha})`;
+          mCtx.fillRect(c * cellW, r * cellH, cellW + 1, cellH + 1);
+        }
+      }
+      mosaicTextureRef.current = mosaicCanvas;
+      const mosaicTexture = new THREE.CanvasTexture(mosaicCanvas);
+      mosaicTexture.wrapS = THREE.RepeatWrapping;
+      mosaicTexture.wrapT = THREE.RepeatWrapping;
+      const mosaicGeo = new THREE.PlaneGeometry(60, 60);
+      const mosaicMat = new THREE.MeshBasicMaterial({
+        map: mosaicTexture,
+        transparent: true,
+        opacity: 0.5,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const mosaicMesh = new THREE.Mesh(mosaicGeo, mosaicMat);
+      mosaicMesh.position.set(0, 0, -8);
+      scene.add(mosaicMesh);
+      mosaicMeshRef.current = mosaicMesh;
+    }
 
     // Geometry — store drawable objects for progressive reveal
     const drawables: THREE.Object3D[] = [];
-    const sceneConfig: SceneConfig = { seed, palette, material, effect };
+    const sceneConfig: SceneConfig = { seed, palette, material, effect, customColors: customColorsRef.current };
     const normalizedWithZ = normalized.map((p) => ({ x: p.x, y: p.y, z: p.z ?? 0, value: p.value }));
+    const lineRadius = lineWidth * 0.008;
 
     // ── Liquid sphere — shader-based, moves along curve to draw ──────
-    const sphereRadius = 0.55;
+    const sphereRadius = lineRadius * 1.5;
     sphereRadiusRef.current = sphereRadius;
     const sphereMat = new THREE.ShaderMaterial({
       vertexShader: sphereVertexShader,
@@ -428,82 +631,61 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
     const trailMat = new THREE.LineBasicMaterial({
       color: new THREE.Color(pal.glow),
       transparent: true,
-      opacity: 0.7,
+      opacity: 0.45,
       linewidth: 2,
-      blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
     const trail = new THREE.Line(trailGeo, trailMat);
     root.add(trail);
     trailRef.current = trail;
 
-    // ── Conical tail — liquid extrusion from sphere ────────────────────────
-    const tailGeo = new THREE.ConeGeometry(sphereRadius * 0.4, sphereRadius * 2.5, 12, 1);
-    const tailMat = new THREE.MeshPhysicalMaterial({
-      color: new THREE.Color(pal.glow),
-      emissive: new THREE.Color(pal.end),
-      emissiveIntensity: 0.6,
-      transparent: true,
-      opacity: 0.5,
-      roughness: 0.1,
-      metalness: 0.8,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-    });
-    const tailMesh = new THREE.Mesh(tailGeo, tailMat);
-    tailMesh.visible = false;
-    root.add(tailMesh);
-    tailRef.current = tailMesh;
-
-    // Line thickness — proportional to sphere for visual harmony
-    const lineRadius = sphereRadius * 0.12;
-
-    // ── Geometry creation — all 3D with proper thickness ─────────────
-    if (geometry === 'tubes' || geometry === 'mesh' || geometry === 'lines') {
-      // Lines become real 3D tubes — not flat
+    // ── Geometry creation — each visually distinct ─────────────────────
+    if (geometry === 'lines') {
+      const linesMesh = buildLinesGeometry(surfaceCurve, sceneConfig);
+      root.add(linesMesh);
+      drawables.push(linesMesh);
+    } else if (geometry === 'tubes') {
       const tubeGeo = new THREE.TubeGeometry(surfaceCurve, Math.max(360, points3D.length * 4), lineRadius, 16, false);
       const tubeMesh = new THREE.Mesh(tubeGeo, progressiveTube.material);
       root.add(tubeMesh);
       drawables.push(tubeMesh);
+    } else if (geometry === 'mesh') {
+      const meshGroup = buildMeshGeometry(surfaceCurve, points3D.length, sceneConfig);
+      root.add(meshGroup);
+      meshGroup.traverse((obj) => {
+        if (obj instanceof THREE.Mesh) drawables.push(obj);
+      });
     } else if (geometry === 'ribbon') {
       const ribbon = buildRibbonGeometry(surfaceCurve, sceneConfig);
       root.add(ribbon);
       drawables.push(ribbon);
-    } else if (geometry === 'torus') {
-      const torus = buildTorusGeometry(sceneConfig);
-      root.add(torus);
-      drawables.push(torus);
-    } else if (geometry === 'cylinder') {
-      const cyl = buildCylinderGeometry(sceneConfig);
-      root.add(cyl);
-      drawables.push(cyl);
-    } else if (geometry === 'cone') {
-      const cone = buildConeGeometry(sceneConfig);
-      root.add(cone);
-      drawables.push(cone);
-    } else if (geometry === 'branching') {
-      const branch = buildBranchingSystem(sceneConfig);
-      root.add(branch);
-      branch.traverse((obj) => {
-        if (obj instanceof THREE.Mesh) drawables.push(obj);
-      });
+    } else if (geometry === 'torus-knot') {
+      const knot = buildTorusKnotGeometry(surfaceCurve, sceneConfig);
+      root.add(knot);
+      drawables.push(knot);
+    } else if (geometry === 'mobius') {
+      const mobius = buildMobiusGeometry(surfaceCurve, sceneConfig);
+      root.add(mobius);
+      drawables.push(mobius);
+    } else if (geometry === 'helix') {
+      const helix = buildHelixGeometry(surfaceCurve, sceneConfig);
+      root.add(helix);
+      drawables.push(helix);
     } else if (geometry === 'network') {
       const net = buildNetworkStructure(normalizedWithZ, sceneConfig);
       root.add(net);
       net.traverse((obj) => {
         if (obj instanceof THREE.Line || obj instanceof THREE.Mesh) drawables.push(obj);
       });
-    } else if (geometry === 'trail') {
-      const trail = buildTrailSystem(surfaceCurve, sceneConfig);
-      root.add(trail);
-      drawables.push(trail);
     } else if (geometry === 'polygons') {
-      // Polygons also get 3D tube treatment with metallic finish
+      const colors = sceneConfig.customColors
+        ? { ...getPalette(palette), start: sceneConfig.customColors[0], glow: sceneConfig.customColors[1], end: sceneConfig.customColors[2] }
+        : getPalette(palette);
       const polyGeo = new THREE.TubeGeometry(surfaceCurve, Math.max(200, points3D.length * 2), lineRadius * 0.8, 8, false);
-      const polyMat = createIridescentMaterial(pal.start, pal.end, {
+      const polyMat = createIridescentMaterial(colors.start, colors.end, {
         iridescence: 0.9,
         sheen: 0.8,
-        sheenColor: pal.glow,
+        sheenColor: colors.glow,
         metalness: 0.7,
         roughness: 0.08,
       });
@@ -511,7 +693,8 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
       root.add(polyMesh);
       drawables.push(polyMesh);
     } else if (geometry === 'surface') {
-      const surf = buildTorusGeometry(sceneConfig, 2, 0.5);
+      const surfGeo = new THREE.TubeGeometry(surfaceCurve, Math.max(200, points3D.length * 2), lineRadius * 1.5, 16, false);
+      const surf = new THREE.Mesh(surfGeo, progressiveTube.material);
       root.add(surf);
       drawables.push(surf);
     }
@@ -531,7 +714,7 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
     const perspCam = camera as THREE.PerspectiveCamera;
     const aspect = perspCam.aspect;
     const vFov = perspCam.fov * (Math.PI / 180);
-    const elevAngle = 20 * (Math.PI / 180);
+    const elevAngle = 12 * (Math.PI / 180);
     const cosElev = Math.cos(elevAngle);
     const sinElev = Math.sin(elevAngle);
 
@@ -545,22 +728,47 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
     const hFov = 2 * Math.atan(Math.tan(vFov * 0.5) * aspect);
     const distHoriz = (projH * 0.5) / (Math.tan(hFov * 0.5) * targetOcc);
 
-    const finalDist = Math.max(distVert, distHoriz);
+    // Frontal position: camera on +Z axis relative to center, slightly above
+    const minDist = Math.max(distVert, distHoriz);
+    const idealDist = minDist * 1.2; // 20% margin
+    idealDistanceRef.current = idealDist;
+
+    // Strictly frontal: same X as center, elevated by 12°, on +Z axis
     finalCamPosRef.current.set(
       bboxCenter.x,
-      bboxCenter.y + sinElev * finalDist,
-      bboxCenter.z + cosElev * finalDist,
+      bboxCenter.y + sinElev * idealDist,
+      bboxCenter.z + cosElev * idealDist,
     );
     bboxCenterRef.current.copy(bboxCenter);
 
     // Debug occupancy (disabled in production)
 
+    // Cosmic Stardust
+    if (stardustDensity > 0) {
+      const sd = createCosmicStardust(palette, seed, stardustDensity, stardustReactivity, customColorsRef.current);
+      root.add(sd.points);
+      stardustRef.current = sd;
+    }
+
     // Post-processing
     postProcessingRef.current?.dispose();
     postProcessingRef.current = null;
-    postProcessingRef.current = setupPostProcessing(renderer, scene, camera, effect);
+    postProcessingRef.current = setupPostProcessing(renderer, scene, camera, effect, {
+      dispersion,
+      dofStrength,
+      shockwaveIntensity,
+    });
+
+    // Set OrbitControls target and distance limits based on bounding box
+    if (controls) {
+      controls.target.set(bboxCenter.x, bboxCenter.y, bboxCenter.z);
+      controls.minDistance = idealDist * 0.5;
+      controls.maxDistance = idealDist * 2.0;
+    }
 
     return () => {
+      controlsRef.current?.dispose();
+      controlsRef.current = null;
       disposeThreeObject(starfieldRef.current);
       starfieldRef.current = null;
       gpuParticlesRef.current?.dispose();
@@ -569,10 +777,21 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
       ambientDustRef.current = null;
       progressiveTubeRef.current?.dispose();
       progressiveTubeRef.current = null;
+      if (tunnelRef.current) {
+        tunnelRef.current.dispose();
+        tunnelRef.current = null;
+      }
+      if (mosaicMeshRef.current) {
+        disposeThreeObject(mosaicMeshRef.current);
+        mosaicMeshRef.current = null;
+      }
+      mosaicTextureRef.current = null;
+      if (stardustRef.current) {
+        stardustRef.current.dispose();
+        stardustRef.current = null;
+      }
       disposeThreeObject(trailRef.current);
       trailRef.current = null;
-      disposeThreeObject(tailRef.current);
-      tailRef.current = null;
       disposeThreeObject(sphereRef.current);
       sphereRef.current = null;
       sphereMatRef.current = null;
@@ -580,7 +799,7 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
       disposeThreeObject(root);
       while (root.children.length > 0) root.remove(root.children[0]);
     };
-  }, [seed, steps, engine, grid, geometry, palette, material, effect]);
+  }, [seed, steps, engine, grid, geometry, palette, material, effect, customColors]);
 
   // ── EFFECT 3: Palette/light/fog updates (cheap, no rebuild) ─────────────
   useEffect(() => {
@@ -619,21 +838,13 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
       if (trailMat.color) trailMat.color.set(colors.glow);
     }
 
-    // Update tube colors — setMaterial then override with custom colors
+    // Update tube colors — setMaterial with custom colors applied
     if (tube) {
-      tube.setMaterial(palette, material);
-      // Re-apply custom colors after setMaterial resets to palette defaults
+      tube.setMaterial(palette, material, customColors);
       if (customColors) {
-        const su = (tube.material.userData as Record<string, unknown>).shader;
-        if (su && typeof su === 'object' && 'uniforms' in su) {
-          const u = (su as { uniforms: Record<string, { value: THREE.Color }> }).uniforms;
-          if (u.uColorStart) u.uColorStart.value.set(customColors[0]);
-          if (u.uColorEnd) u.uColorEnd.value.set(customColors[2]);
-          if (u.uColorGlow) u.uColorGlow.value.set(customColors[1]);
-        }
         if (tube.material.color) tube.material.color.set(customColors[0]);
         if ('emissive' in tube.material && tube.material.emissive) {
-          (tube.material as THREE.MeshPhysicalMaterial).emissive.set(customColors[2]);
+          (tube.material as THREE.MeshPhysicalMaterial).emissive.set(new THREE.Color(customColors[2]).multiplyScalar(0.3));
         }
       }
     }
@@ -652,6 +863,17 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
     });
 
     const newLights = addLightsToScene(scene, lightPreset, palette, customColors);
+    // Sun directional light positioned by lightAngle (elevation)
+    const sunElev = (lightAngle * Math.PI) / 180;
+    const sunDist = 10;
+    const sunLight = new THREE.DirectionalLight(new THREE.Color('#ffe8c0'), 0.8);
+    sunLight.position.set(
+      Math.cos(sunElev) * sunDist,
+      Math.sin(sunElev) * sunDist,
+      5,
+    );
+    scene.add(sunLight);
+    newLights.push(sunLight);
     lightHelpersRef.current = newLights;
 
     return () => {
@@ -661,7 +883,7 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
       });
       lightHelpersRef.current = [];
     };
-  }, [palette, material, lightPreset, effect, customColors]);
+  }, [palette, material, lightPreset, effect, customColors, lightAngle]);
 
   // ── EFFECT 4: Animation tick ─────────────────────────────────────────────
   useEffect(() => {
@@ -679,8 +901,6 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
     // Pre-allocated Vector3 to avoid GC pressure in RAF
     const _tmpDir = new THREE.Vector3();
     const _tmpLookAt = new THREE.Vector3();
-    const _trailPos = new THREE.Vector3();
-    const _tailColor = new THREE.Color();
 
     // ── Easing functions per motionPreset ────────────────────────────────────
     const applyEasing = (t: number, preset: MotionPresetId): number => {
@@ -738,8 +958,7 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
       const curve = curveRef.current;
       const sphere = sphereRef.current;
       const sphereMat = sphereMatRef.current;
-      const tail = tailRef.current;
-      if (curve && sphere && sphereMat) {
+      if (curve && curve.points.length >= 2 && sphere && sphereMat) {
         sphereMat.uniforms.uTime.value = time * 0.001;
         sphereMat.uniforms.uProgress.value = revealT;
         const sphereFade = Math.min(1, easedProgress * 4);
@@ -750,13 +969,17 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
         const morph = 1 + Math.sin(time * 0.0012) * 0.03 * breathFade;
 
         // Move sphere along the curve — smooth deceleration at end
-        const t = Math.min(revealT * 0.999, 1);
-        const pos = curve.getPointAt(t);
+        const t = Math.max(0.001, Math.min(0.999, revealT * 0.999));
+        let pos: THREE.Vector3;
+        try { pos = curve.getPointAt(t); } catch { pos = curve.getPoint(Math.max(0, Math.min(1, t))); }
+        if (!pos || !Number.isFinite(pos.x)) pos = curve.points[0];
         sphere.position.copy(pos);
 
         // Compute movement direction for liquid deformation
-        const lookAheadT = Math.min(t + 0.01, 1);
-        const nextPos = curve.getPointAt(lookAheadT);
+        const lookAheadT = Math.min(t + 0.01, 0.999);
+        let nextPos: THREE.Vector3;
+        try { nextPos = curve.getPointAt(lookAheadT); } catch { nextPos = curve.getPoint(lookAheadT); }
+        if (!nextPos || !Number.isFinite(nextPos.x)) nextPos = pos;
         _tmpDir.copy(nextPos).sub(pos);
         const dirLen = _tmpDir.length();
         if (dirLen > 0.0001) _tmpDir.divideScalar(dirLen); else _tmpDir.set(0, 0, 1);
@@ -780,47 +1003,21 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
         }
 
         // ── Conical tail — liquid extrusion behind sphere ──────
-        if (tail && isRevealing && t > 0.02) {
-          tail.visible = true;
-          const tailBaseT = Math.max(0, t - 0.03);
-          const tailBasePos = curve.getPointAt(tailBaseT);
-          // Position tail midpoint between sphere and trail start
-          const midX = (pos.x + tailBasePos.x) * 0.5;
-          const midY = (pos.y + tailBasePos.y) * 0.5;
-          const midZ = (pos.z + tailBasePos.z) * 0.5;
-          tail.position.set(midX, midY, midZ);
-          // Orient tail pointing backward along curve
-          _tmpDir.copy(pos).sub(tailBasePos);
-          if (_tmpDir.lengthSq() > 0.0001) {
-            _tmpDir.normalize();
-            _tmpLookAt.copy(tail.position).add(_tmpDir);
-            tail.lookAt(_tmpLookAt);
-          }
-          // Fade tail as sphere slows
-          const tailOpacity = 0.4 * (1 - easedProgress * 0.6);
-          (tail.material as THREE.MeshPhysicalMaterial).opacity = tailOpacity;
-          // Update tail color to match current palette position
-          const pal = palRef.current;
-          if (pal) {
-            _tailColor.set(pal.glow);
-            (tail.material as THREE.MeshPhysicalMaterial).color.copy(_tailColor);
-          }
-        } else if (tail) {
-          tail.visible = false;
-        }
       }
 
       // ── Trail — glowing line behind the tracer ─────────────────────────
       const trail = trailRef.current;
-      if (curve && trail) {
+      if (curve && curve.points.length >= 2 && trail) {
         const trailLen = 40;
         const trailSpan = 0.06;
-        const headT = Math.min(revealT * 0.999, 1);
+        const headT = Math.max(0.001, Math.min(0.999, revealT * 0.999));
         const posAttr = trail.geometry.attributes.position as THREE.BufferAttribute;
         for (let i = 0; i < trailLen; i++) {
           const frac = i / trailLen;
-          const trailT = Math.max(0, headT - trailSpan * (1 - frac));
-          const p = curve.getPointAt(trailT);
+          const trailT = Math.max(0.001, Math.min(0.999, headT - trailSpan * (1 - frac)));
+          let p: THREE.Vector3;
+          try { p = curve.getPointAt(trailT); } catch { p = curve.getPoint(trailT); }
+          if (!p || !Number.isFinite(p.x)) p = curve.points[0];
           posAttr.setXYZ(i, p.x, p.y, p.z);
         }
         posAttr.needsUpdate = true;
@@ -893,28 +1090,75 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
 
         camera.position.set(camX, camY, camZ);
       } else {
-        // After reveal: smooth 1.5s ease-in-out transition to final position
-        const timeSinceReveal = (time - drawStartTime) - drawDuration;
-        const transitionDuration = 1500;
-        const t = Math.min(1, timeSinceReveal / transitionDuration);
+        // After reveal: smooth transition to frontal position, then OrbitControls
         const finalPos = finalCamPosRef.current;
-        if (t >= 1) {
-          camera.position.copy(finalPos);
-        } else {
+        const controls = controlsRef.current;
+
+        if (!isAnimationDoneRef.current) {
+          // First frame after reveal: start the transition
+          isAnimationDoneRef.current = true;
+          cameraTransitionRef.current = {
+            active: true,
+            startPos: camera.position.clone(),
+            endPos: finalPos.clone(),
+            startTime: time,
+            duration: 1500,
+          };
+        }
+
+        const transition = cameraTransitionRef.current;
+        if (transition && transition.active) {
+          const elapsed = time - transition.startTime;
+          const t = Math.min(1, elapsed / transition.duration);
+          // easeInOutCubic
           const ease = t < 0.5
             ? 4 * t * t * t
             : 1 - Math.pow(-2 * t + 2, 3) / 2;
-          camera.position.lerpVectors(camera.position, finalPos, ease);
+          camera.position.lerpVectors(transition.startPos, transition.endPos, ease);
+
+          if (t >= 1) {
+            // Transition complete: enable OrbitControls
+            transition.active = false;
+            camera.position.copy(transition.endPos);
+            if (controls) {
+              controls.target.set(bboxCenterRef.current.x, bboxCenterRef.current.y, bboxCenterRef.current.z);
+              controls.update();
+              controls.enabled = true;
+            }
+          }
+        } else if (controls && controls.enabled) {
+          // OrbitControls handles the camera — just update damping
+          controls.update();
         }
       }
 
-      camera.lookAt(bboxCenterRef.current.x, bboxCenterRef.current.y, bboxCenterRef.current.z);
+      // Only lookAt when not using OrbitControls
+      if (!controlsRef.current || !controlsRef.current.enabled) {
+        camera.lookAt(bboxCenterRef.current.x, bboxCenterRef.current.y, bboxCenterRef.current.z);
+      }
+
+      // Update tunnel background
+      if (tunnelRef.current) {
+        tunnelRef.current.update(time);
+      }
+
+      // Track camera speed for dispersion
+      const camDelta = camera.position.distanceTo(prevCamPosRef.current);
+      cameraSpeedRef.current = cameraSpeedRef.current * 0.95 + camDelta * 20;
+      prevCamPosRef.current.copy(camera.position);
+
+      // Update cosmic stardust
+      if (stardustRef.current) {
+        stardustRef.current.update(time, 0, 0);
+      }
 
       try {
         const pp = postProcessingRef.current;
         if (pp) {
           if (pp.grainPass) pp.grainPass.uniforms.uTime.value = time * 0.001;
           if (pp.refractionPass) pp.refractionPass.uniforms.uTime.value = time * 0.001;
+          if (pp.dispersionPass) pp.dispersionPass.update(time, cameraSpeedRef.current);
+          if (pp.shockwavePass) pp.shockwavePass.update(time, 0);
           pp.composer.render();
         } else {
           renderer.render(scene, camera);
@@ -933,7 +1177,7 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
       disposed = true;
       window.cancelAnimationFrame(animationFrame);
     };
-  }, [seed, effect, motionPreset, animationSpeed, isAnimating]);
+  }, [seed, effect, motionPreset, animationSpeed, isAnimating, cameraPreset]);
 
   return (
     <div

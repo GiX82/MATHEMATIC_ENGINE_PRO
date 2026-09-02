@@ -11,19 +11,30 @@ import type { MaterialMode } from '../domain/types';
 import { registry } from './registry';
 import type { IMaterialEngine } from './plugin';
 
+export type CustomColors = [string, string, string];
+
 export interface ProgressiveTubeMaterial {
   material: THREE.MeshPhysicalMaterial;
   setProgress: (value: number) => void;
   setTime: (value: number) => void;
-  setMaterial: (palette: PaletteKey, materialMode: MaterialMode) => void;
+  setMaterial: (palette: PaletteKey, materialMode: MaterialMode, customColors?: CustomColors) => void;
   dispose: () => void;
+}
+
+function resolveColors(palette: PaletteKey, customColors?: CustomColors) {
+  const base = getPalette(palette);
+  if (customColors) {
+    return { start: customColors[0], glow: customColors[1], end: customColors[2], bg: base.bg, accent: base.accent };
+  }
+  return base;
 }
 
 export function createProgressiveTubeMaterial(
   palette: PaletteKey,
   materialMode: MaterialMode,
+  customColors?: CustomColors,
 ): ProgressiveTubeMaterial {
-  const colors = getPalette(palette);
+  const colors = resolveColors(palette, customColors);
   const engine = registry.get(materialMode) as IMaterialEngine | undefined;
   const props = engine?.threeMaterialProps ?? {};
 
@@ -38,15 +49,23 @@ export function createProgressiveTubeMaterial(
 
   const material = new THREE.MeshPhysicalMaterial({
     color: new THREE.Color((props.color as string) ?? colors.start),
-    emissive: new THREE.Color(colors.end),
-    emissiveIntensity: (props.emissiveIntensity as number) ?? 0.7,
+    emissive: new THREE.Color(colors.end).multiplyScalar(0.3),
+    emissiveIntensity: (props.emissiveIntensity as number) ?? 0.2,
     roughness: (props.roughness as number) ?? 0.08,
     metalness: (props.metalness as number) ?? 0.7,
     clearcoat: (props.clearcoat as number) ?? 1.0,
     clearcoatRoughness: (props.clearcoatRoughness as number) ?? 0.05,
     transparent: true,
-    opacity: 1.0,
+    opacity: 0.85,
     side: THREE.DoubleSide,
+    ...(materialMode === 'holographic' ? {
+      iridescence: 1.0,
+      iridescenceIOR: 1.8,
+      iridescenceThicknessRange: [100, 800],
+      sheen: 1.0,
+      sheenColor: new THREE.Color(colors.glow),
+      sheenRoughness: 0.3,
+    } : {}),
   });
 
   // Patch the material's shader via onBeforeCompile
@@ -114,13 +133,13 @@ export function createProgressiveTubeMaterial(
     }
   };
 
-  const setMaterial = (newPalette: PaletteKey, newMaterialMode: MaterialMode) => {
-    const c = getPalette(newPalette);
+  const setMaterial = (newPalette: PaletteKey, newMaterialMode: MaterialMode, newCustomColors?: CustomColors) => {
+    const c = resolveColors(newPalette, newCustomColors);
     const eng = registry.get(newMaterialMode) as IMaterialEngine | undefined;
     const p = eng?.threeMaterialProps ?? {};
     material.color.set((p.color as string) ?? c.start);
-    material.emissive.set(c.end);
-    material.emissiveIntensity = (p.emissiveIntensity as number) ?? 0.7;
+    material.emissive.set(new THREE.Color(c.end).multiplyScalar(0.3));
+    material.emissiveIntensity = (p.emissiveIntensity as number) ?? 0.2;
     material.roughness = (p.roughness as number) ?? 0.08;
     material.metalness = (p.metalness as number) ?? 0.7;
     material.clearcoat = (p.clearcoat as number) ?? 1.0;

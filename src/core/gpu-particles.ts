@@ -30,7 +30,20 @@ export function createGPUParticles(
   seed: number,
   count = 800,
   customColors?: [string, string, string],
-): GPUParticleSystem {
+): GPUParticleSystem | null {
+  if (!curve || !curve.points || curve.points.length < 2) return null;
+  for (const p of curve.points) {
+    if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y) || !Number.isFinite(p.z)) return null;
+  }
+
+  let totalLength: number;
+  try {
+    totalLength = curve.getLength();
+  } catch {
+    return null;
+  }
+  if (!Number.isFinite(totalLength) || totalLength < 1e-6) return null;
+
   const colors = resolveColors(palette, customColors);
   const rand = mulberry32(seed);
 
@@ -44,9 +57,16 @@ export function createGPUParticles(
   const glowColor = new THREE.Color(colors.glow);
 
   for (let i = 0; i < count; i++) {
-    // Distribute along curve with some scatter
-    const t = rand();
-    const point = curve.getPointAt(t);
+    const t = Math.max(0.001, Math.min(0.999, rand()));
+    let point: THREE.Vector3;
+    try {
+      point = curve.getPointAt(t);
+    } catch {
+      point = curve.getPoint(Math.max(0, Math.min(1, t)));
+    }
+    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y) || !Number.isFinite(point.z)) {
+      point = curve.points[0];
+    }
     const scatter = 0.6;
     positions[i * 3] = point.x + (rand() - 0.5) * scatter;
     positions[i * 3 + 1] = point.y + (rand() - 0.5) * scatter;

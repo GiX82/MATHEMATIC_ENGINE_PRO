@@ -5,6 +5,8 @@ import type { CameraPresetId, EffectMode, GeometryMode, LightPresetId, MaterialM
 import type { GeneratorEngine, PaletteKey, SpatialGrid } from '../lib/math';
 
 export const paletteNames: Record<PaletteKey, string> = {
+  none: 'Nessuno',
+  clean: 'Pulito',
   void: 'Vuoto',
   aurora: 'Aurora',
   nebula: 'Nebula',

@@ -7,12 +7,10 @@ export const geometryCatalog = {
   surface: { id: 'surface', label: 'Superfici', description: 'Superfici e mesh generate', premium: true },
   mesh: { id: 'mesh', label: 'Mesh 3D', description: 'Mesh volumetriche cinematiche', premium: true },
   ribbon: { id: 'ribbon', label: 'Nastro', description: 'Nastro continuo lungo la curva', premium: true },
-  torus: { id: 'torus', label: 'Toro', description: 'Toro rotazionale con materiale PBR', premium: true },
-  cylinder: { id: 'cylinder', label: 'Cilindro', description: 'Cilindri lungo i punti della curva', premium: true },
-  cone: { id: 'cone', label: 'Cono', description: 'Coni con orientamento variabile', premium: true },
-  branching: { id: 'branching', label: 'Rami', description: 'Sistemi ramificati procedurali', premium: true },
   network: { id: 'network', label: 'Rete', description: 'Grafi con nodi e connessioni', premium: true },
-  trail: { id: 'trail', label: 'Scia', description: 'Linee di scia lungo la traiettoria', premium: true },
+  'torus-knot': { id: 'torus-knot', label: 'Nodo Torico', description: 'Nodo torico topologico lungo la curva', premium: true },
+  mobius: { id: 'mobius', label: 'Nastro di Möbius', description: 'Nastro a una faccia con twist', premium: true },
+  helix: { id: 'helix', label: 'Elica', description: 'Elica spiraliforme lungo la traiettoria', premium: true },
 } as const;
 
 export const materialCatalog = {

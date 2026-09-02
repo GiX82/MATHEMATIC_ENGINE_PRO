@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { GeometryMode, EffectMode } from '../domain/types';
 import { buildArtwork, getPalette, normalizeArtwork, type GeneratorEngine, type PaletteKey, type SpatialGrid } from '../lib/math';
+import { createMosaicState, updateMosaicInfluence, drawMosaic, disposeMosaic, type MosaicState } from '../core/mosaic-background';
 
 interface Renderer2DProps {
   seed: number;
@@ -19,6 +20,7 @@ interface Renderer2DProps {
   shadowDirection?: number;
   shadowSoftness?: number;
   lightAngle?: number;
+  backgroundMode?: 'none' | 'mosaic' | 'tunnel';
   onCanvasReady?: (canvas: HTMLCanvasElement) => void;
 }
 
@@ -33,10 +35,11 @@ function parseHex(hex: string): [number, number, number] {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
-export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effect, animationSpeed, isAnimating, customColors, lineWidth = 1.5, pointSize = 3, shadowIntensity = 4, shadowDirection: _shadowDirection = 135, shadowSoftness = 2, lightAngle: _lightAngle = 45, onCanvasReady }: Renderer2DProps) {
+export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effect, animationSpeed, isAnimating, customColors, lineWidth = 1.5, pointSize = 3, shadowIntensity = 4, shadowDirection = 135, shadowSoftness = 2, lightAngle = 45, backgroundMode = 'none', onCanvasReady }: Renderer2DProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const artworkCacheRef = useRef<CachedArtwork | null>(null);
+  const mosaicRef = useRef<MosaicState | null>(null);
 
   // Ref for animation params that change frequently (no rebuild needed)
   const animParamsRef = useRef({
@@ -44,9 +47,12 @@ export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effec
     animating: isAnimating,
     shIntensity: shadowIntensity,
     shSoftness: shadowSoftness,
+    shDirection: shadowDirection,
+    lightAngle,
     lineWidth,
     pointSize,
     effect,
+    backgroundMode,
   });
 
   // Ref for colors — updated cheaply, read in animation loop
@@ -64,10 +70,13 @@ export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effec
     animParamsRef.current.animating = isAnimating;
     animParamsRef.current.shIntensity = shadowIntensity;
     animParamsRef.current.shSoftness = shadowSoftness;
+    animParamsRef.current.shDirection = shadowDirection;
+    animParamsRef.current.lightAngle = lightAngle;
     animParamsRef.current.lineWidth = lineWidth;
     animParamsRef.current.pointSize = pointSize;
     animParamsRef.current.effect = effect;
-  }, [animationSpeed, isAnimating, shadowIntensity, shadowSoftness, lineWidth, pointSize, effect]);
+    animParamsRef.current.backgroundMode = backgroundMode;
+  }, [animationSpeed, isAnimating, shadowIntensity, shadowSoftness, shadowDirection, lightAngle, lineWidth, pointSize, effect, backgroundMode]);
 
   // ── EFFECT 2: Sync colors (no rebuild) ──────────────────────────────────
   useEffect(() => {
@@ -127,27 +136,42 @@ export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effec
     // Cache artwork data for the animation loop
     artworkCacheRef.current = { normalized, stats, paletteColors: getPalette(palette) };
 
+    // Create mosaic background if enabled
+    const bm = animParamsRef.current.backgroundMode;
+    if (bm === 'mosaic') {
+      const cols = Math.max(8, Math.min(24, Math.floor(viewWidth / 60)));
+      const rows = Math.max(6, Math.min(18, Math.floor(viewHeight / 60)));
+      mosaicRef.current = createMosaicState(viewWidth, viewHeight, cols, rows);
+    }
+
     let drawStart = -1;
-    const drawDuration = animParamsRef.current.speed * 1000;
 
     const rgbStr = (c: [number, number, number], a = 1) =>
       `rgba(${Math.round(c[0])},${Math.round(c[1])},${Math.round(c[2])},${a})`;
 
-    // ── 3-stop color map using current colors (read from ref each frame) ──
+    // ── 3-stop color map — terzile distribution (33/33/34) ──
     const mapValueToColor = (t: number, c1: [number, number, number], c2: [number, number, number], c3: [number, number, number]): readonly [number, number, number] => {
-      if (t < 0.5) {
-        const u = t * 2;
+      if (t < 0.33) {
+        const u = t / 0.33;
         return [
           c1[0] + (c2[0] - c1[0]) * u,
           c1[1] + (c2[1] - c1[1]) * u,
           c1[2] + (c2[2] - c1[2]) * u,
         ];
       }
-      const u = (t - 0.5) * 2;
+      if (t < 0.66) {
+        const u = (t - 0.33) / 0.33;
+        return [
+          c2[0] + (c3[0] - c2[0]) * u,
+          c2[1] + (c3[1] - c2[1]) * u,
+          c2[2] + (c3[2] - c2[2]) * u,
+        ];
+      }
+      const u = (t - 0.66) / 0.34;
       return [
-        c2[0] + (c3[0] - c2[0]) * u,
-        c2[1] + (c3[1] - c2[1]) * u,
-        c2[2] + (c3[2] - c2[2]) * u,
+        c3[0] + (c1[0] - c3[0]) * u,
+        c3[1] + (c1[1] - c3[1]) * u,
+        c3[2] + (c1[2] - c3[2]) * u,
       ];
     };
 
@@ -157,7 +181,7 @@ export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effec
     ];
 
     const drawFrame = (time: number) => {
-      const { speed, animating, shIntensity, shSoftness, lineWidth: lw, pointSize: ps, effect: eff } = animParamsRef.current;
+      const { speed, animating, shIntensity, shSoftness, shDirection, lightAngle: _la, lineWidth: lw, pointSize: ps, effect: eff } = animParamsRef.current;
       const colors = colorsRef.current;
 
       // Parse colors once per frame (cheap — 3 hex parses)
@@ -166,6 +190,7 @@ export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effec
       const c3 = parseHex(colors.end);
 
       if (drawStart < 0) drawStart = time;
+      const drawDuration = animParamsRef.current.speed * 1000;
       const drawProgress = Math.min(1, (time - drawStart) / drawDuration);
       const easedDraw = drawProgress < 0.5
         ? 2 * drawProgress * drawProgress
@@ -180,13 +205,50 @@ export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effec
       const focalX = viewWidth * 0.5;
       const focalY = viewHeight * 0.5;
 
-      // ── Background gradient ──
+      // ── Background gradient — all 3 colors ──
       const bg = ctx.createRadialGradient(focalX, focalY, 15, focalX, focalY, Math.max(viewWidth, viewHeight));
       bg.addColorStop(0, colors.bg);
-      bg.addColorStop(0.38, colors.start);
+      bg.addColorStop(0.2, colors.start);
+      bg.addColorStop(0.5, colors.glow);
+      bg.addColorStop(0.8, colors.end);
       bg.addColorStop(1, colors.bg);
       ctx.fillStyle = bg;
       ctx.fillRect(0, 0, viewWidth, viewHeight);
+
+      // ── Mosaic background (if enabled) ──
+      const mosaic = mosaicRef.current;
+      if (mosaic && animParamsRef.current.backgroundMode === 'mosaic') {
+        const scale = (Math.min(viewWidth, viewHeight) * 0.44) / Math.max(1, (() => { let m = 0; for (const p of normalized) { if (Math.abs(p.x) > m) m = Math.abs(p.x); if (Math.abs(p.y) > m) m = Math.abs(p.y); } return m; })());
+        updateMosaicInfluence(mosaic, normalized, viewWidth, viewHeight, focalX, focalY, scale);
+        drawMosaic(mosaic, colors, time, 1.0);
+        ctx.drawImage(mosaic.canvas, 0, 0, viewWidth, viewHeight);
+      }
+
+      // ── Tunnel vortex background (if enabled) ──
+      if (animParamsRef.current.backgroundMode === 'tunnel') {
+        const t = time * 0.0003;
+        const cx = focalX;
+        const cy = focalY;
+        const maxR = Math.hypot(viewWidth, viewHeight) * 0.6;
+        const rings = 24;
+        for (let i = rings; i >= 0; i--) {
+          const frac = i / rings;
+          const r = maxR * frac;
+          const angle = t + frac * Math.PI * 6;
+          const c1 = parseHex(colors.start);
+          const c2 = parseHex(colors.glow);
+          const blend = (Math.sin(angle) + 1) * 0.5;
+          const cr = c1[0] + (c2[0] - c1[0]) * blend;
+          const cg = c1[1] + (c2[1] - c1[1]) * blend;
+          const cb = c1[2] + (c2[2] - c1[2]) * blend;
+          const alpha = 0.03 + (1 - frac) * 0.06;
+          ctx.beginPath();
+          ctx.arc(cx, cy, r, 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(${Math.round(cr)},${Math.round(cg)},${Math.round(cb)},${alpha})`;
+          ctx.lineWidth = Math.max(2, maxR / rings * 1.5);
+          ctx.stroke();
+        }
+      }
 
       // ── Central glow — bright light at focal point ──
       const glow = ctx.createRadialGradient(focalX, focalY, 0, focalX, focalY, viewWidth * 0.35);
@@ -264,11 +326,13 @@ export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effec
       // ── Density scale: fewer points → smaller elements ──
       const densityScale = Math.min(1, Math.sqrt(normalized.length / 50));
 
-      // ── Shadow params: heavy, from top-left light ──
+      // ── Shadow params: directional from lightAngle ──
       const shadowOn = shIntensity > 0;
       const shBlur = 25 + (shSoftness / 3) * 10; // 25–35px range
-      const shOffX = -3 - shIntensity * 0.4;  // negative = left
-      const shOffY = 3 + shIntensity * 0.4;   // positive = down
+      const shRad = (shDirection * Math.PI) / 180;
+      const shDist = 3 + shIntensity * 0.4;
+      const shOffX = -Math.cos(shRad) * shDist;
+      const shOffY = Math.sin(shRad) * shDist;
       const shAlpha = 0.50 + (shIntensity / 10) * 0.40;
       const isGlowEffect = eff === 'glow' || eff === 'bloom' || eff === 'cinematic-lighting';
 
@@ -282,11 +346,18 @@ export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effec
         return { x: px, y: py };
       };
 
-      if (geometry !== 'trail') {
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        const visiblePoints = normalized.slice(0, visibleCount);
-        const segStep = Math.max(1, Math.floor(visiblePoints.length / 200));
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      const visiblePoints = normalized.slice(0, visibleCount);
+      const segStep = Math.max(1, Math.floor(visiblePoints.length / 200));
+
+      // ── Geometry-specific rendering parameters ──
+      const isThinLines = geometry === 'lines';
+      const isWideRibbon = geometry === 'ribbon' || geometry === 'mobius';
+      const isDoubleHelix = geometry === 'helix' || geometry === 'torus-knot';
+      const isNetwork = geometry === 'network';
+      const isPolygons = geometry === 'polygons';
+      const thicknessMul = isThinLines ? 0.35 : isWideRibbon ? 2.2 : isNetwork ? 0.6 : 1.0;
 
         // ════════════════════════════════════════════════════════════
         // INTERLEAVED: shadow + main line per segment
@@ -313,7 +384,7 @@ export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effec
           const energyFade = 0.5 + valT * 0.5;
 
           // ── Variable thickness: thick peaks, thin valleys ──
-          const thickMul = 0.8 + valT * 0.7;
+          const thickMul = (0.8 + valT * 0.7) * thicknessMul;
 
           // ── Shadow of this segment ──
           if (shadowOn) {
@@ -376,6 +447,83 @@ export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effec
           ctx.shadowColor = 'transparent';
           ctx.shadowOffsetX = 0;
           ctx.shadowOffsetY = 0;
+        }
+
+        // ── GEOMETRY-SPECIFIC: Double helix / twisted line overlay ──
+        if (isDoubleHelix) {
+          ctx.save();
+          ctx.globalAlpha = 0.35;
+          ctx.lineCap = 'round';
+          const maxDist2 = Math.hypot(viewWidth, viewHeight) * 0.5;
+          for (let i = 0; i < visiblePoints.length - 1; i += segStep) {
+            const p0 = refract(centerX + visiblePoints[i].x * scale, centerY + visiblePoints[i].y * scale);
+            const p1 = refract(centerX + visiblePoints[Math.min(i + segStep, visiblePoints.length - 1)].x * scale, centerY + visiblePoints[Math.min(i + segStep, visiblePoints.length - 1)].y * scale);
+            const maxVal = Math.max(1, stats.maxValue);
+            const rawT = visiblePoints[i].value / maxVal;
+            const valT = Math.min(1, Math.log(1 + rawT * 9) / Math.log(10));
+            const lineCol = mapValueToColor(valT, c1, c2, c3);
+            const midX2 = (p0.x + p1.x) * 0.5;
+            const midY2 = (p0.y + p1.y) * 0.5;
+            const distFade2 = 1 - Math.min(1, Math.hypot(midX2 - focalX, midY2 - focalY) / maxDist2) * 0.4;
+            const wave = Math.sin(i * 0.15 + time * 0.001) * 6;
+            const dx = p1.x - p0.x;
+            const dy = p1.y - p0.y;
+            const perpX = -Math.sin(Math.atan2(dy, dx));
+            const perpY = Math.cos(Math.atan2(dy, dx));
+            ctx.beginPath();
+            ctx.moveTo(p0.x + perpX * wave, p0.y + perpY * wave);
+            ctx.lineTo(p1.x + perpX * wave, p1.y + perpY * wave);
+            ctx.strokeStyle = rgbStr(lineCol, 0.6 * distFade2);
+            ctx.lineWidth = lw * 0.4 * densityScale;
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = rgbStr(lineCol, 0.3);
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+
+        // ── GEOMETRY-SPECIFIC: Network dots at crossings ──
+        if (isNetwork) {
+          ctx.save();
+          for (let i = 0; i < visiblePoints.length; i += Math.max(1, Math.floor(visiblePoints.length / 60))) {
+            const point = visiblePoints[i];
+            const r = refract(centerX + point.x * scale, centerY + point.y * scale);
+            const maxVal = Math.max(1, stats.maxValue);
+            const rawT = point.value / maxVal;
+            const valT = Math.min(1, Math.log(1 + rawT * 9) / Math.log(10));
+            const ptCol = mapValueToColor(valT, c1, c2, c3);
+            const radius = 2.5 + valT * 3;
+            ctx.beginPath();
+            ctx.arc(r.x, r.y, radius * densityScale, 0, Math.PI * 2);
+            ctx.fillStyle = rgbStr(ptCol, 0.8);
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = rgbStr(ptCol, 0.5);
+            ctx.fill();
+          }
+          ctx.restore();
+        }
+
+        // ── GEOMETRY-SPECIFIC: Polygon fill between segments ──
+        if (isPolygons && visiblePoints.length > 2) {
+          ctx.save();
+          ctx.globalAlpha = 0.12;
+          for (let i = 0; i < visiblePoints.length - 2; i += Math.max(1, Math.floor(segStep * 2))) {
+            const pA = refract(centerX + visiblePoints[i].x * scale, centerY + visiblePoints[i].y * scale);
+            const pB = refract(centerX + visiblePoints[Math.min(i + segStep, visiblePoints.length - 1)].x * scale, centerY + visiblePoints[Math.min(i + segStep, visiblePoints.length - 1)].y * scale);
+            const pC = refract(centerX + visiblePoints[Math.min(i + segStep * 2, visiblePoints.length - 1)].x * scale, centerY + visiblePoints[Math.min(i + segStep * 2, visiblePoints.length - 1)].y * scale);
+            const maxVal = Math.max(1, stats.maxValue);
+            const rawT = visiblePoints[i].value / maxVal;
+            const valT = Math.min(1, Math.log(1 + rawT * 9) / Math.log(10));
+            const triCol = mapValueToColor(valT, c1, c2, c3);
+            ctx.beginPath();
+            ctx.moveTo(pA.x, pA.y);
+            ctx.lineTo(pB.x, pB.y);
+            ctx.lineTo(pC.x, pC.y);
+            ctx.closePath();
+            ctx.fillStyle = rgbStr(triCol, 0.5);
+            ctx.fill();
+          }
+          ctx.restore();
         }
 
         // ── Point shadows (interleaved, every 3rd point) ──
@@ -464,7 +612,6 @@ export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effec
           ctx.globalAlpha = 1;
           ctx.restore();
         }
-      }
 
       // ── POINTS PASS 2: metallic dots on top ──
       normalized.slice(0, visibleCount).forEach((point, index) => {
@@ -577,11 +724,15 @@ export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effec
       window.cancelAnimationFrame(animFrame);
       resizeObserver.disconnect();
       window.removeEventListener('resize', handleResize);
+      if (mosaicRef.current) {
+        disposeMosaic(mosaicRef.current);
+        mosaicRef.current = null;
+      }
       canvas.remove();
       if (canvasRef.current === canvas) canvasRef.current = null;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [palette, seed, steps, engine, grid, geometry, effect]);
+  }, [palette, seed, steps, engine, grid, geometry, effect, backgroundMode, customColors]);
 
   return (
     <div

@@ -34,12 +34,23 @@ vec3 tubeComputeColor() {
   if (tubeT > uProgress) return vec3(0.0);
 
   float t = tubeT / max(uProgress, 0.001);
-  vec3 baseColor = mix(uColorStart, uColorEnd, t);
+  // Terzile: 3 equal bands cycling all 3 colors
+  vec3 baseColor;
+  if (t < 0.33) {
+    baseColor = mix(uColorStart, uColorGlow, t / 0.33);
+  } else if (t < 0.66) {
+    baseColor = mix(uColorGlow, uColorEnd, (t - 0.33) / 0.33);
+  } else {
+    baseColor = mix(uColorEnd, uColorStart, (t - 0.66) / 0.34);
+  }
 
   vec3 viewDir = normalize(cameraPosition - vWorldPos);
   float fresnel = 1.0 - abs(dot(viewDir, vNormW));
   fresnel = pow(fresnel, 3.0);
-  vec3 glowColor = uColorGlow * fresnel * 1.8;
+  // Edge glow cycles through all 3 colors
+  float edgePhase = sin(uTime * 0.6 + tubeT * 8.0) * 0.5 + 0.5;
+  vec3 edgeCol = mix(uColorStart, mix(uColorGlow, uColorEnd, edgePhase), edgePhase);
+  vec3 glowColor = edgeCol * fresnel * 1.8;
 
   float noise = fract(sin(dot(vWorldPos.xy, vec2(12.9898, 78.233))) * 43758.5453);
   float noiseMix = sin(uTime * 0.8 + tubeT * 12.0) * 0.08 + noise * 0.03;

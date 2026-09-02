@@ -5,28 +5,33 @@ import { useShallow } from 'zustand/react/shallow';
 import ArtCanvas, { type ArtCanvasHandle } from '../components/ArtCanvas';
 import { SlidePanel } from '../components/SlidePanel';
 import { ErrorBoundary } from '../components/ErrorBoundary';
+import { FpsCounter } from '../components/FpsCounter';
 import { useArtworkStore } from '../store/useArtworkStore';
 
 function GeneratorPage() {
   const { t } = useTranslation();
   const {
     seed, steps, mode, engine, grid, palette, geometry, material, effect,
-    lightPreset, motionPreset, cameraPreset,
-    customColors, lineWidth, pointSize, shadowIntensity, shadowDirection, shadowSoftness, lightAngle, animationDuration,
-    setSeed, setMode, randomize,
+    lightPreset, motionPreset, cameraPreset, isAnimating,
+    customColors, lineWidth, pointSize, shadowIntensity, shadowDirection, shadowSoftness, lightAngle, animationDuration, backgroundMode,
+    fogDensity, dispersion, stardustDensity, stardustReactivity, shockwaveIntensity, dofStrength,
+    setSeed, setMode, setIsAnimating, randomize,
   } = useArtworkStore(useShallow((s) => ({
     seed: s.seed, steps: s.steps, mode: s.mode, engine: s.engine, grid: s.grid,
     palette: s.palette, geometry: s.geometry, material: s.material, effect: s.effect,
     lightPreset: s.lightPreset, motionPreset: s.motionPreset, cameraPreset: s.cameraPreset,
     customColors: s.customColors, lineWidth: s.lineWidth, pointSize: s.pointSize,
     shadowIntensity: s.shadowIntensity, shadowDirection: s.shadowDirection, shadowSoftness: s.shadowSoftness,
-    lightAngle: s.lightAngle, animationDuration: s.animationDuration,
-    setSeed: s.setSeed, setMode: s.setMode, randomize: s.randomize,
+    lightAngle: s.lightAngle, animationDuration: s.animationDuration, isAnimating: s.isAnimating,
+    backgroundMode: s.backgroundMode,
+    fogDensity: s.fogDensity, dispersion: s.dispersion,
+    stardustDensity: s.stardustDensity, stardustReactivity: s.stardustReactivity,
+    shockwaveIntensity: s.shockwaveIntensity, dofStrength: s.dofStrength,
+    setSeed: s.setSeed, setMode: s.setMode, setIsAnimating: s.setIsAnimating, randomize: s.randomize,
   })));
 
   const artCanvasRef = useRef<ArtCanvasHandle | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
-  const [isAnimating] = useState(true);
   const webglFallbackHandled = useRef(false);
   const [webglToast, setWebglToast] = useState(false);
 
@@ -75,6 +80,13 @@ function GeneratorPage() {
             shadowDirection={shadowDirection}
             shadowSoftness={shadowSoftness}
             lightAngle={lightAngle}
+            backgroundMode={backgroundMode}
+            fogDensity={fogDensity}
+            dispersion={dispersion}
+            stardustDensity={stardustDensity}
+            stardustReactivity={stardustReactivity}
+            shockwaveIntensity={shockwaveIntensity}
+            dofStrength={dofStrength}
             onWebGLFallback={handleWebGLFallback}
           />
         </ErrorBoundary>
@@ -99,6 +111,24 @@ function GeneratorPage() {
             </span>
             {t('mode')}
           </button>
+          <button
+            type="button"
+            onClick={() => setIsAnimating(!isAnimating)}
+            aria-label={isAnimating ? t('pause') : t('play')}
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-black/40 text-sm text-zinc-400 backdrop-blur-md transition hover:border-white/20 hover:text-white"
+          >
+            {isAnimating ? '⏸' : '▶'}
+          </button>
+          {mode === '3d' && !isAnimating && (
+          <button
+            type="button"
+            onClick={() => artCanvasRef.current?.resetCamera()}
+            aria-label={t('reset_camera')}
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-black/40 text-sm text-zinc-400 backdrop-blur-md transition hover:border-white/20 hover:text-white"
+          >
+            🎯
+          </button>
+          )}
         </div>
 
         {/* Top-right: Hamburger */}
@@ -168,6 +198,9 @@ function GeneratorPage() {
           {t('webgl_fallback')}
         </div>
       )}
+
+      {/* FPS Counter */}
+      <FpsCounter />
 
       {/* Mobile bottom nav */}
       <nav className="fixed bottom-0 left-0 right-0 z-30 flex border-t border-white/8 bg-[#050a12]/90 backdrop-blur-xl md:hidden" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>

@@ -6,7 +6,7 @@ export const freeAccess = {
   engines: ['collatz'] as const,
   grids: ['ulam'] as const,
   modes: ['2d'] as const,
-  palettes: ['void', 'aurora', 'nebula'] as const,
+  palettes: ['none', 'clean', 'void', 'aurora', 'nebula'] as const,
   geometries: ['lines'] as const,
   materials: ['basic'] as const,
   effects: ['glow', 'fog'] as const,

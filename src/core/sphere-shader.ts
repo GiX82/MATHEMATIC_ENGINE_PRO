@@ -121,33 +121,35 @@ export const sphereFragmentShader = /* glsl */ `
     float pattern = vDisplacement * 0.5 + 0.5;
     pattern = smoothstep(0.2, 0.8, pattern);
 
-    // Color lerps along trajectory based on progress
+    // Color lerps along trajectory — terzile distribution (33/33/34)
     vec3 color;
-    if (vProgress < 0.5) {
-      float u = vProgress * 2.0;
+    if (vProgress < 0.33) {
+      float u = vProgress / 0.33;
       color = mix(uColor1, uColor2, u);
-    } else {
-      float u = (vProgress - 0.5) * 2.0;
+    } else if (vProgress < 0.66) {
+      float u = (vProgress - 0.33) / 0.33;
       color = mix(uColor2, uColor3, u);
+    } else {
+      float u = (vProgress - 0.66) / 0.34;
+      color = mix(uColor3, uColor1, u);
     }
 
-    // Blend with displacement pattern for surface variation
+    // Blend with displacement pattern — all 3 colors
     vec3 patternColor = mix(uColor1, uColor2, pattern);
     patternColor = mix(patternColor, uColor3, fresnel * 0.7);
     color = mix(color, patternColor, 0.4);
 
-    float edge = pow(fresnel, 1.5);
-    color += uColor3 * edge * 0.5;
+    // Edge glow — uses palette color only, no white additive
+    float edge = pow(fresnel, 2.5);
+    float edgeCycle = sin(slowTime * 1.5) * 0.5 + 0.5;
+    vec3 edgeCol = mix(uColor1, mix(uColor2, uColor3, edgeCycle), edgeCycle);
+    color += edgeCol * edge * 0.15;
 
-    // Inner glow pulse
-    float pulse = sin(slowTime * 2.0) * 0.08 + 0.92;
+    // Inner glow pulse — subtle
+    float pulse = sin(slowTime * 2.0) * 0.03 + 0.97;
     color *= pulse;
 
-    // Bright core
-    float core = 1.0 - fresnel;
-    color += vec3(0.15, 0.12, 0.2) * core * 0.3;
-
-    float alpha = mix(0.8, 0.98, 1.0 - fresnel) * uOpacity;
+    float alpha = mix(0.7, 0.92, 1.0 - fresnel) * uOpacity;
 
     gl_FragColor = vec4(color, alpha);
   }
