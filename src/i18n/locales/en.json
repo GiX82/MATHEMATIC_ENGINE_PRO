@@ -42,6 +42,7 @@
   "color_3": "Color 3",
   "animation_duration": "Animation duration",
   "controls_2d": "2D Controls",
+  "controls_3d": "3D Controls",
   "thickness": "Thickness",
   "points": "Points",
   "shadow": "Shadow",
@@ -78,5 +79,12 @@
   "development": "Development",
   "error_rendering": "Rendering error",
   "error_rendering_desc": "An error occurred in the graphics engine. Try changing parameters or reloading the page.",
-  "retry": "Retry"
+  "retry": "Retry",
+  "create": "Create",
+  "pause": "Pause",
+  "play": "Play",
+  "show_grid": "Show grid",
+  "zoom_in": "Zoom in",
+  "zoom_out": "Zoom out",
+  "reset_zoom": "Reset zoom"
 }

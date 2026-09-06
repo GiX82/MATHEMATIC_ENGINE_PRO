@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import type { GeometryMode, EffectMode } from '../domain/types';
 import { buildArtwork, getPalette, normalizeArtwork, type GeneratorEngine, type PaletteKey, type SpatialGrid } from '../lib/math';
 import { createMosaicState, updateMosaicInfluence, drawMosaic, disposeMosaic, type MosaicState } from '../core/mosaic-background';
@@ -21,6 +21,7 @@ interface Renderer2DProps {
   shadowSoftness?: number;
   lightAngle?: number;
   backgroundMode?: 'none' | 'mosaic' | 'tunnel';
+  showGrid?: boolean;
   onCanvasReady?: (canvas: HTMLCanvasElement) => void;
 }
 
@@ -35,7 +36,7 @@ function parseHex(hex: string): [number, number, number] {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
-export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effect, animationSpeed, isAnimating, customColors, lineWidth = 1.5, pointSize = 3, shadowIntensity = 4, shadowDirection = 135, shadowSoftness = 2, lightAngle = 45, backgroundMode = 'none', onCanvasReady }: Renderer2DProps) {
+export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effect, animationSpeed, isAnimating, customColors, lineWidth = 1.5, pointSize = 3, shadowIntensity = 4, shadowDirection = 135, shadowSoftness = 2, lightAngle = 45, backgroundMode = 'none', showGrid = false, onCanvasReady }: Renderer2DProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const artworkCacheRef = useRef<CachedArtwork | null>(null);
@@ -54,6 +55,16 @@ export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effec
     effect,
     backgroundMode,
   });
+
+  // Ref for showGrid — toggled by user, read in animation loop
+  const showGridRef = useRef(showGrid);
+  useEffect(() => { showGridRef.current = showGrid; }, [showGrid]);
+
+    // ── Zoom/pan state — applied inside the canvas drawLoop via ctx ──
+  const zoomRef = useRef(1);
+  const panRef = useRef({ x: 0, y: 0 });
+  const isDraggingRef = useRef(false);
+  const dragStartRef = useRef({ x: 0, y: 0 });
 
   // Ref for colors — updated cheaply, read in animation loop
   const colorsRef = useRef({
@@ -101,6 +112,53 @@ export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effec
     canvasRef.current = canvas;
     container.appendChild(canvas);
     onCanvasReady?.(canvas);
+
+    // ── Zoom/pan: wheel = zoom, drag = pan (applied in canvas draw) ──
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = container.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const oldZoom = zoomRef.current;
+      const factor = e.deltaY > 0 ? 0.9 : 1.1;
+      const newZoom = Math.max(0.3, Math.min(8, oldZoom * factor));
+      // Zoom towards mouse position
+      panRef.current.x = mx - (mx - panRef.current.x) * (newZoom / oldZoom);
+      panRef.current.y = my - (my - panRef.current.y) * (newZoom / oldZoom);
+      zoomRef.current = newZoom;
+    };
+
+    let dragLastX = 0;
+    let dragLastY = 0;
+    const handleMouseDown = (e: MouseEvent) => {
+      if (zoomRef.current <= 1) return;
+      isDraggingRef.current = true;
+      dragLastX = e.clientX;
+      dragLastY = e.clientY;
+      canvas.style.cursor = 'grabbing';
+    };
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      panRef.current.x += e.clientX - dragLastX;
+      panRef.current.y += e.clientY - dragLastY;
+      dragLastX = e.clientX;
+      dragLastY = e.clientY;
+    };
+    const handleMouseUp = () => {
+      isDraggingRef.current = false;
+      canvas.style.cursor = zoomRef.current > 1 ? 'grab' : '';
+    };
+    const handleDblClick = () => {
+      zoomRef.current = 1;
+      panRef.current = { x: 0, y: 0 };
+      canvas.style.cursor = '';
+    };
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    container.addEventListener('mousedown', handleMouseDown);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    container.addEventListener('dblclick', handleDblClick);
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -200,6 +258,16 @@ export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effec
       const pulse = (animating && isRevealing) ? Math.sin(time * 0.0005 * speed + seed) * (1 - easedDraw) : 0;
 
       ctx.clearRect(0, 0, viewWidth, viewHeight);
+
+      // ── Zoom / Pan transform (via canvas context, not CSS) ──
+      const _z = zoomRef.current;
+      const _px = panRef.current.x;
+      const _py = panRef.current.y;
+      if (_z !== 1 || _px !== 0 || _py !== 0) {
+        ctx.save();
+        ctx.translate(_px, _py);
+        ctx.scale(_z, _z);
+      }
 
       // ── Center point ──
       const focalX = viewWidth * 0.5;
@@ -704,6 +772,130 @@ export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effec
         ctx.globalAlpha = 1;
         ctx.globalCompositeOperation = 'source-over';
       }
+
+      // ── GRID OVERLAY: when showGrid is ON, draw grid structure + numbers ──
+      if (showGridRef.current && normalized.length > 0) {
+        ctx.save();
+        const gridAlpha = isRevealing ? 0.6 : 1.0;
+
+        // Prime number check (simple trial division)
+        const isPrime = (n: number): boolean => {
+          if (n < 2) return false;
+          if (n < 4) return true;
+          if (n % 2 === 0 || n % 3 === 0) return false;
+          for (let d = 5; d * d <= n; d += 6) {
+            if (n % d === 0 || n % (d + 2) === 0) return false;
+          }
+          return true;
+        };
+
+        // Luminance of an RGB tuple (0..1 range)
+        const luminance = (r: number, g: number, b: number) => 0.299 * r + 0.587 * g + 0.114 * b;
+
+        // Grid lines — connect consecutive points with thin structure lines
+        ctx.globalAlpha = 0.25 * gridAlpha;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.lineWidth = 0.6;
+        ctx.beginPath();
+        for (let i = 0; i < visiblePoints.length; i++) {
+          const r = refract(centerX + visiblePoints[i].x * scale, centerY + visiblePoints[i].y * scale);
+          if (i === 0) ctx.moveTo(r.x, r.y);
+          else ctx.lineTo(r.x, r.y);
+        }
+        ctx.stroke();
+
+        // Number labels — ALL points, adaptive color per point
+        const maxVal = Math.max(1, stats.maxValue);
+        const fontSize = visiblePoints.length > 150
+          ? 7
+          : visiblePoints.length > 80
+            ? 8
+            : visiblePoints.length > 40
+              ? 9
+              : 10;
+        ctx.font = `700 ${fontSize}px "SF Mono", "Fira Code", "Consolas", monospace`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        for (let i = 0; i < visiblePoints.length; i++) {
+          const point = visiblePoints[i];
+          const r = refract(centerX + point.x * scale, centerY + point.y * scale);
+          const val = point.value;
+          const prime = isPrime(val);
+
+          // Compute the same color the line uses at this point
+          const rawT = val / maxVal;
+          const valT = Math.min(1, Math.log(1 + rawT * 9) / Math.log(10));
+          const lineCol = mapValueToColor(valT, c1, c2, c3);
+          const lum = luminance(lineCol[0] / 255, lineCol[1] / 255, lineCol[2] / 255);
+
+          // Contrast: if background is dark → bright text; if bright → dark text
+          const textBright = lum < 0.45;
+
+          const text = String(val);
+          const metrics = ctx.measureText(text);
+          const tw = metrics.width + 5;
+          const th = fontSize + 3;
+          const labelY = r.y - fontSize * 0.6;
+
+          // Pill background: dark or light based on contrast
+          if (prime) {
+            // Primes get a cyan tinted pill
+            ctx.fillStyle = textBright
+              ? `rgba(0, 245, 212, ${0.22 * gridAlpha})`
+              : `rgba(0, 0, 0, ${0.55 * gridAlpha})`;
+          } else {
+            ctx.fillStyle = textBright
+              ? `rgba(0, 0, 0, ${0.45 * gridAlpha})`
+              : `rgba(255, 255, 255, ${0.45 * gridAlpha})`;
+          }
+          ctx.beginPath();
+          ctx.roundRect(r.x - tw / 2, labelY - th / 2, tw, th, 3);
+          ctx.fill();
+
+          // Number text — opposite contrast to pill
+          if (prime) {
+            ctx.fillStyle = textBright
+              ? `rgba(0, 245, 212, ${0.95 * gridAlpha})`
+              : `rgba(0, 200, 180, ${0.95 * gridAlpha})`;
+          } else {
+            ctx.fillStyle = textBright
+              ? `rgba(255, 255, 255, ${0.95 * gridAlpha})`
+              : `rgba(20, 20, 20, ${0.9 * gridAlpha})`;
+          }
+          ctx.fillText(text, r.x, labelY);
+
+          // Prime dot indicator
+          if (prime) {
+            ctx.beginPath();
+            ctx.arc(r.x, r.y + fontSize * 0.3, 2, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(0, 245, 212, ${0.9 * gridAlpha})`;
+            ctx.fill();
+          }
+        }
+
+        // Legend — top-left
+        ctx.globalAlpha = 0.9 * gridAlpha;
+        const legendFs = fontSize + 1;
+        ctx.font = `700 ${legendFs}px "SF Mono", "Fira Code", "Consolas", monospace`;
+        ctx.textAlign = 'left';
+        // Legend pill
+        ctx.fillStyle = `rgba(0, 0, 0, 0.55)`;
+        ctx.beginPath();
+        ctx.roundRect(10, 10, 130, legendFs * 2 + 14, 5);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(0, 245, 212, 0.95)';
+        ctx.fillText('● primo', 18, 10 + legendFs + 2);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.fillText('□ valore', 18, 10 + legendFs * 2 + 6);
+
+        ctx.restore();
+      }
+
+      // ── Restore zoom/pan transform ──
+      if (_z !== 1 || _px !== 0 || _py !== 0) {
+        ctx.restore();
+      }
     };
 
     let animFrame = 0;
@@ -724,6 +916,11 @@ export function Renderer2D({ seed, steps, palette, engine, grid, geometry, effec
       window.cancelAnimationFrame(animFrame);
       resizeObserver.disconnect();
       window.removeEventListener('resize', handleResize);
+      container.removeEventListener('wheel', handleWheel);
+      container.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      container.removeEventListener('dblclick', handleDblClick);
       if (mosaicRef.current) {
         disposeMosaic(mosaicRef.current);
         mosaicRef.current = null;

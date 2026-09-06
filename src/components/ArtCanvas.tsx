@@ -35,6 +35,8 @@ interface ArtCanvasProps {
   stardustReactivity?: number;
   shockwaveIntensity?: number;
   dofStrength?: number;
+  generationCount?: number;
+  showGrid?: boolean;
   onWebGLFallback?: () => void;
 }
 
@@ -44,7 +46,7 @@ export type ArtCanvasHandle = {
   exportHiRes: (scale?: number) => void;
 };
 
-const ArtCanvasComponent = forwardRef<ArtCanvasHandle, ArtCanvasProps>(function ArtCanvas({ seed, steps, mode, palette, engine = 'collatz', grid = 'ulam', geometry = 'lines', material = 'basic', effect = 'glow', lightPreset = 'standard', motionPreset = 'ease-in-out', cameraPreset = 'orbit', animationSpeed = 1, isAnimating = false, customColors, lineWidth, pointSize, shadowIntensity = 4, shadowDirection = 135, shadowSoftness = 2, lightAngle = 45, backgroundMode = 'none', fogDensity = 0, dispersion = 0, stardustDensity = 0, stardustReactivity = 0, shockwaveIntensity = 0, dofStrength = 0, onWebGLFallback }, ref) {
+const ArtCanvasComponent = forwardRef<ArtCanvasHandle, ArtCanvasProps>(function ArtCanvas({ seed, steps, mode, palette, engine = 'collatz', grid = 'ulam', geometry = 'lines', material = 'basic', effect = 'glow', lightPreset = 'standard', motionPreset = 'ease-in-out', cameraPreset = 'orbit', animationSpeed = 1, isAnimating = false, customColors, lineWidth, pointSize, shadowIntensity = 4, shadowDirection = 135, shadowSoftness = 2, lightAngle = 45, backgroundMode = 'none', fogDensity = 0, dispersion = 0, stardustDensity = 0, stardustReactivity = 0, shockwaveIntensity = 0, dofStrength = 0, generationCount = 0, showGrid = false, onWebGLFallback }, ref) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const resetCameraRef = useRef<(() => void) | null>(null);
   const exportHiResRef = useRef<((scale?: number) => void) | null>(null);
@@ -108,6 +110,8 @@ const ArtCanvasComponent = forwardRef<ArtCanvasHandle, ArtCanvasProps>(function 
           stardustReactivity={stardustReactivity}
           shockwaveIntensity={shockwaveIntensity}
           dofStrength={dofStrength}
+          generationCount={generationCount}
+          showGrid={showGrid}
           onResetCamera={handleResetCameraReady}
           onExportHiRes={handleExportHiResReady}
           onCanvasReady={handleCanvasReady}
@@ -138,6 +142,7 @@ const ArtCanvasComponent = forwardRef<ArtCanvasHandle, ArtCanvasProps>(function 
         shadowSoftness={shadowSoftness}
         lightAngle={lightAngle}
         backgroundMode={backgroundMode}
+        showGrid={showGrid}
         onCanvasReady={handleCanvasReady}
       />
       </div>

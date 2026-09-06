@@ -1,5 +1,5 @@
 /* oxlint-disable react-hooks/exhaustive-deps */
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import * as THREE from 'three';
 import type { CameraPresetId, EffectMode, GeometryMode, LightPresetId, MaterialMode, MotionPresetId } from '../domain/types';
 import { buildArtwork, getPalette, normalizeArtwork, type GeneratorEngine, type PaletteKey, type SpatialGrid } from '../lib/math';
@@ -102,6 +102,8 @@ interface Renderer3DProps {
   stardustReactivity?: number;
   shockwaveIntensity?: number;
   dofStrength?: number;
+  generationCount?: number;
+  showGrid?: boolean;
   onResetCamera?: () => void;
   onExportHiRes?: (fn: (scale?: number) => void) => void;
   onCanvasReady?: (canvas: HTMLCanvasElement) => void;
@@ -163,7 +165,10 @@ function addLightsToScene(scene: THREE.Scene, presetId: LightPresetId, palette: 
 import { mulberry32 } from '../core/seed';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
-export function Renderer3D({ seed, steps, palette, engine, grid, geometry, material, effect, lightPreset, motionPreset, cameraPreset, animationSpeed, isAnimating, customColors, lineWidth = 2.5, pointSize: _pointSize = 3, shadowIntensity: _shadowIntensity, shadowDirection: _shadowDirection, shadowSoftness: _shadowSoftness, lightAngle, backgroundMode = 'none', fogDensity = 0, dispersion = 0, stardustDensity = 0, stardustReactivity = 0, shockwaveIntensity = 0, dofStrength = 0, onResetCamera, onExportHiRes, onCanvasReady }: Renderer3DProps) {
+// Shared PMREM environment map — computed once, reused by all renderers
+let _sharedEnvMap: THREE.Texture | null = null;
+
+export function Renderer3D({ seed, steps, palette, engine, grid, geometry, material, effect, lightPreset, motionPreset, cameraPreset, animationSpeed, isAnimating, customColors, lineWidth = 2.5, pointSize: _pointSize = 3, shadowIntensity: _shadowIntensity, shadowDirection: _shadowDirection, shadowSoftness: _shadowSoftness, lightAngle, backgroundMode = 'none', fogDensity = 0, dispersion = 0, stardustDensity = 0, stardustReactivity = 0, shockwaveIntensity = 0, dofStrength = 0, generationCount = 0, showGrid = false, onResetCamera, onExportHiRes, onCanvasReady }: Renderer3DProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -196,6 +201,8 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
   const stardustRef = useRef<CosmicStardustSystem | null>(null);
   const cameraSpeedRef = useRef(0);
   const prevCamPosRef = useRef(new THREE.Vector3());
+  const showGridRef = useRef(showGrid);
+  useEffect(() => { showGridRef.current = showGrid; }, [showGrid]);
   const controlsRef = useRef<OrbitControls | null>(null);
   const isAnimationDoneRef = useRef(false);
   const cameraTransitionRef = useRef<{ active: boolean; startPos: THREE.Vector3; endPos: THREE.Vector3; startTime: number; duration: number } | null>(null);
@@ -206,6 +213,12 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
   onExportHiResRef.current = onExportHiRes;
   const customColorsRef = useRef(customColors);
   customColorsRef.current = customColors;
+
+  // Grid deconstruct refs
+  const gridFloorRef = useRef<THREE.GridHelper | null>(null);
+  const wireframeOverlaysRef = useRef<THREE.Mesh[]>([]);
+  const originalMaterialsRef = useRef<Map<THREE.Mesh, THREE.Material | THREE.Material[]>>(new Map());
+  const minimapCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // ── EFFECT 1: One-time renderer + scene setup ────────────────────────────
   useEffect(() => {
@@ -243,12 +256,80 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(width, height, false);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 0.85;
+    renderer.toneMappingExposure = 1.2;
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(40, width / height || 1, 0.1, 100);
     camera.position.set(0, 0.5, 8.5);
     scene.add(camera);
+
+    // ── PMREM Environment Map for metallic reflections ──────────────────────
+    // Shared singleton: all renderers reuse the same envMap for performance.
+    // BRIGHT: enough reflection regions for metallic/glass/crystal evaluation.
+    if (!_sharedEnvMap) {
+      const pmremGenerator = new THREE.PMREMGenerator(renderer);
+      pmremGenerator.compileEquirectangularShader();
+      const envScene = new THREE.Scene();
+      const envGeo = new THREE.SphereGeometry(50, 32, 16);
+      const envCanvas = document.createElement('canvas');
+      envCanvas.width = 1024;
+      envCanvas.height = 512;
+      const ectx = envCanvas.getContext('2d')!;
+      // Base gradient — brighter midtones
+      const envGrad = ectx.createLinearGradient(0, 0, 0, 512);
+      envGrad.addColorStop(0, '#1a2040');
+      envGrad.addColorStop(0.2, '#2a2848');
+      envGrad.addColorStop(0.4, '#5a4a50');
+      envGrad.addColorStop(0.5, '#6a5a48');
+      envGrad.addColorStop(0.6, '#4a4050');
+      envGrad.addColorStop(0.8, '#2a3040');
+      envGrad.addColorStop(1, '#101820');
+      ectx.fillStyle = envGrad;
+      ectx.fillRect(0, 0, 1024, 512);
+
+      // Bright warm spot — upper left (key light reflection)
+      const spot1 = ectx.createRadialGradient(200, 100, 5, 200, 100, 200);
+      spot1.addColorStop(0, 'rgba(255,220,180,0.85)');
+      spot1.addColorStop(0.3, 'rgba(220,180,140,0.4)');
+      spot1.addColorStop(0.7, 'rgba(160,120,80,0.1)');
+      spot1.addColorStop(1, 'rgba(0,0,0,0)');
+      ectx.fillStyle = spot1;
+      ectx.fillRect(0, 0, 1024, 512);
+
+      // Bright cool spot — upper right (fill/rim reflection)
+      const spot2 = ectx.createRadialGradient(750, 80, 5, 750, 80, 180);
+      spot2.addColorStop(0, 'rgba(180,220,255,0.8)');
+      spot2.addColorStop(0.3, 'rgba(140,180,220,0.35)');
+      spot2.addColorStop(0.7, 'rgba(80,120,180,0.08)');
+      spot2.addColorStop(1, 'rgba(0,0,0,0)');
+      ectx.fillStyle = spot2;
+      ectx.fillRect(0, 0, 1024, 512);
+
+      // Center bright — subtle overall fill
+      const spot3 = ectx.createRadialGradient(512, 256, 10, 512, 256, 300);
+      spot3.addColorStop(0, 'rgba(200,200,210,0.5)');
+      spot3.addColorStop(0.4, 'rgba(160,160,170,0.15)');
+      spot3.addColorStop(1, 'rgba(0,0,0,0)');
+      ectx.fillStyle = spot3;
+      ectx.fillRect(0, 0, 1024, 512);
+
+      // Bottom rim — warm accent
+      const spot4 = ectx.createRadialGradient(512, 450, 10, 512, 450, 250);
+      spot4.addColorStop(0, 'rgba(255,200,150,0.4)');
+      spot4.addColorStop(0.5, 'rgba(200,150,100,0.1)');
+      spot4.addColorStop(1, 'rgba(0,0,0,0)');
+      ectx.fillStyle = spot4;
+      ectx.fillRect(0, 0, 1024, 512);
+
+      const envTexture = new THREE.CanvasTexture(envCanvas);
+      envTexture.mapping = THREE.EquirectangularReflectionMapping;
+      const envMesh = new THREE.Mesh(envGeo, new THREE.MeshBasicMaterial({ map: envTexture, side: THREE.BackSide }));
+      envScene.add(envMesh);
+      _sharedEnvMap = pmremGenerator.fromScene(envScene, 0.04).texture;
+      pmremGenerator.dispose();
+      envScene.clear();
+    }
+    scene.environment = _sharedEnvMap;
 
     const root = new THREE.Group();
     scene.add(root);
@@ -799,7 +880,7 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
       disposeThreeObject(root);
       while (root.children.length > 0) root.remove(root.children[0]);
     };
-  }, [seed, steps, engine, grid, geometry, palette, material, effect, customColors]);
+  }, [seed, steps, engine, grid, geometry, palette, material, effect, customColors, generationCount]);
 
   // ── EFFECT 3: Palette/light/fog updates (cheap, no rebuild) ─────────────
   useEffect(() => {
@@ -938,12 +1019,14 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
       return t * t * (3 - 2 * t);
     };
 
+    let firstFrame = true;
     const tick = (time: number) => {
       if (disposed) return;
-      if (!isAnimating) {
+      if (!isAnimating && !firstFrame) {
         animationFrame = window.requestAnimationFrame(tick);
         return;
       }
+      firstFrame = false;
 
       if (drawStartTime < 0) drawStartTime = time;
       const drawElapsed = time - drawStartTime;
@@ -1177,12 +1260,208 @@ export function Renderer3D({ seed, steps, palette, engine, grid, geometry, mater
       disposed = true;
       window.cancelAnimationFrame(animationFrame);
     };
-  }, [seed, effect, motionPreset, animationSpeed, isAnimating, cameraPreset]);
+  }, [seed, effect, motionPreset, animationSpeed, isAnimating, cameraPreset, generationCount]);
+
+  // ── Grid deconstruct: wireframe + floor when showGrid toggles ─────────
+  useEffect(() => {
+    const scene = sceneRef.current;
+    const drawables = drawablesRef.current;
+    if (!scene || drawables.length === 0) return;
+
+    if (showGrid) {
+      // ── 1. Grid floor ──
+      if (!gridFloorRef.current) {
+        const floor = new THREE.GridHelper(10, 20, 0x444444, 0x222222);
+        floor.position.y = -1.5;
+        floor.material = new THREE.LineBasicMaterial({
+          color: 0xffffff,
+          transparent: true,
+          opacity: 0.15,
+          depthWrite: false,
+        });
+        scene.add(floor);
+        gridFloorRef.current = floor;
+      }
+
+      // ── 2. Wireframe overlays + semi-transparent originals ──
+      for (const obj of drawables) {
+        if (obj instanceof THREE.Mesh) {
+          // Store original material
+          if (!originalMaterialsRef.current.has(obj)) {
+            originalMaterialsRef.current.set(obj, obj.material);
+          }
+          // Make original semi-transparent
+          const origMat = obj.material;
+          if (Array.isArray(origMat)) {
+            for (const m of origMat) {
+              if ('opacity' in m) { m.transparent = true; m.opacity = 0.25; m.depthWrite = false; }
+            }
+          } else if ('opacity' in origMat) {
+            origMat.transparent = true;
+            origMat.opacity = 0.25;
+            origMat.depthWrite = false;
+          }
+          // Add wireframe overlay
+          const wireMat = new THREE.MeshBasicMaterial({
+            color: 0x00f5d4,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.35,
+            depthWrite: false,
+          });
+          const wire = new THREE.Mesh(obj.geometry, wireMat);
+          wire.renderOrder = 1;
+          obj.parent?.add(wire);
+          wireframeOverlaysRef.current.push(wire);
+        }
+      }
+    } else {
+      // ── Remove grid floor ──
+      if (gridFloorRef.current) {
+        scene.remove(gridFloorRef.current);
+        gridFloorRef.current = null;
+      }
+      // ── Remove wireframe overlays ──
+      for (const wire of wireframeOverlaysRef.current) {
+        wire.parent?.remove(wire);
+        wire.geometry?.dispose();
+        (wire.material as THREE.Material)?.dispose();
+      }
+      wireframeOverlaysRef.current = [];
+      // ── Restore original materials ──
+      for (const [obj, mat] of originalMaterialsRef.current) {
+        obj.material = mat;
+      }
+      originalMaterialsRef.current.clear();
+    }
+
+    return () => {
+      // Cleanup on unmount
+      if (gridFloorRef.current) {
+        scene.remove(gridFloorRef.current);
+        gridFloorRef.current = null;
+      }
+      for (const wire of wireframeOverlaysRef.current) {
+        wire.parent?.remove(wire);
+        wire.geometry?.dispose();
+        (wire.material as THREE.Material)?.dispose();
+      }
+      wireframeOverlaysRef.current = [];
+      for (const [obj, mat] of originalMaterialsRef.current) {
+        obj.material = mat;
+      }
+      originalMaterialsRef.current.clear();
+    };
+  }, [showGrid]);
+
+    // ── Mini-map 2D: draw 2D grid overlay in bottom-right corner ──────────
+  useEffect(() => {
+    const canvas = minimapCanvasRef.current;
+    if (!canvas || !showGrid) return;
+
+    const size = 220;
+    canvas.width = size * 2; // retina
+    canvas.height = size * 2;
+    canvas.style.width = `${size}px`;
+    canvas.style.height = `${size}px`;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const { points } = buildArtwork(seed, Math.min(steps, 120), engine, grid);
+    if (points.length === 0) return;
+
+    const maxVal = Math.max(1, ...points.map((p) => p.value));
+    const isPrime = (n: number): boolean => {
+      if (n < 2) return false;
+      if (n < 4) return true;
+      if (n % 2 === 0 || n % 3 === 0) return false;
+      for (let d = 5; d * d <= n; d += 6) {
+        if (n % d === 0 || n % (d + 2) === 0) return false;
+      }
+      return true;
+    };
+    const luminance = (r: number, g: number, b: number) => 0.299 * r + 0.587 * g + 0.114 * b;
+
+    // Normalize
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const p of points) {
+      if (p.x < minX) minX = p.x;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.y > maxY) maxY = p.y;
+    }
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    const range = Math.max(maxX - minX, maxY - minY) || 1;
+    const s = (size - 20) / range;
+
+    ctx.fillStyle = 'rgba(10, 10, 15, 0.92)';
+    ctx.fillRect(0, 0, size * 2, size * 2);
+
+    // Lines connecting points
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let i = 0; i < points.length; i++) {
+      const sx = (points[i].x - cx) * s + size;
+      const sy = (points[i].y - cy) * s + size;
+      if (i === 0) ctx.moveTo(sx, sy);
+      else ctx.lineTo(sx, sy);
+    }
+    ctx.stroke();
+
+    // ALL points with labels — adaptive contrast
+    const fontSize = points.length > 80 ? 6 : points.length > 40 ? 7 : 8;
+    ctx.font = `700 ${fontSize * 2}px "SF Mono", "Fira Code", monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    for (let i = 0; i < points.length; i++) {
+      const p = points[i];
+      const sx = (p.x - cx) * s + size;
+      const sy = (p.y - cy) * s + size;
+      const prime = isPrime(p.value);
+
+      // Point dot
+      ctx.fillStyle = prime ? 'rgba(0, 245, 212, 0.8)' : 'rgba(255, 255, 255, 0.4)';
+      ctx.beginPath();
+      ctx.arc(sx, sy, prime ? 4 : 2.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Label with dark pill background for readability
+      const text = String(p.value);
+      const tw = ctx.measureText(text).width + 4;
+      const th = fontSize * 2 + 2;
+      const ly = sy - fontSize * 2.5;
+
+      ctx.fillStyle = prime ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.5)';
+      ctx.beginPath();
+      ctx.roundRect(sx - tw / 2, ly - th / 2, tw, th, 2);
+      ctx.fill();
+
+      ctx.fillStyle = prime ? 'rgba(0, 245, 212, 0.95)' : 'rgba(255,255,255,0.75)';
+      ctx.fillText(text, sx, ly);
+    }
+  }, [showGrid, seed, steps, engine, grid]);
 
   return (
     <div
       ref={containerRef}
-      className="h-full w-full"
-    />
+      className="h-full w-full relative"
+    >
+      {/* Mini-map 2D corner overlay */}
+      {showGrid && (
+        <div className="absolute bottom-4 right-4 z-10 rounded-xl overflow-hidden border border-white/10 shadow-2xl backdrop-blur-sm">
+          <canvas
+            ref={minimapCanvasRef}
+            className="block"
+          />
+          <div className="absolute top-1.5 left-2 text-[9px] font-mono text-white/50 uppercase tracking-wider">
+            2D Grid
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

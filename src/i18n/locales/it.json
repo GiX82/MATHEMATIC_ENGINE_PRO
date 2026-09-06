@@ -42,6 +42,7 @@
   "color_3": "Colore 3",
   "animation_duration": "Durata animazione",
   "controls_2d": "Controlli 2D",
+  "controls_3d": "Controlli 3D",
   "thickness": "Spessore",
   "points": "Punti",
   "shadow": "Ombra",
@@ -78,5 +79,12 @@
   "development": "Sviluppo",
   "error_rendering": "Errore di rendering",
   "error_rendering_desc": "Si è verificato un errore nel motore grafico. Prova a cambiare parametri o a ricaricare la pagina.",
-  "retry": "Riprova"
+  "retry": "Riprova",
+  "create": "Crea",
+  "pause": "Pausa",
+  "play": "Riproduci",
+  "show_grid": "Griglia visibile",
+  "zoom_in": "Zoom avanti",
+  "zoom_out": "Zoom indietro",
+  "reset_zoom": "Reset zoom"
 }

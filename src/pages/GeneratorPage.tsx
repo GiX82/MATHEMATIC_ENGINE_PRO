@@ -7,15 +7,18 @@ import { SlidePanel } from '../components/SlidePanel';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { FpsCounter } from '../components/FpsCounter';
 import { useArtworkStore } from '../store/useArtworkStore';
+import { engineNames, gridNames } from '../domain/labels';
+import { geometryCatalog } from '../domain/geometry';
 
 function GeneratorPage() {
   const { t } = useTranslation();
   const {
     seed, steps, mode, engine, grid, palette, geometry, material, effect,
-    lightPreset, motionPreset, cameraPreset, isAnimating,
+    lightPreset, motionPreset, cameraPreset, isAnimating, generationCount,
     customColors, lineWidth, pointSize, shadowIntensity, shadowDirection, shadowSoftness, lightAngle, animationDuration, backgroundMode,
     fogDensity, dispersion, stardustDensity, stardustReactivity, shockwaveIntensity, dofStrength,
-    setSeed, setMode, setIsAnimating, randomize,
+    showGrid,
+    setSeed, setMode, setIsAnimating, randomize, regenerate,
   } = useArtworkStore(useShallow((s) => ({
     seed: s.seed, steps: s.steps, mode: s.mode, engine: s.engine, grid: s.grid,
     palette: s.palette, geometry: s.geometry, material: s.material, effect: s.effect,
@@ -23,11 +26,14 @@ function GeneratorPage() {
     customColors: s.customColors, lineWidth: s.lineWidth, pointSize: s.pointSize,
     shadowIntensity: s.shadowIntensity, shadowDirection: s.shadowDirection, shadowSoftness: s.shadowSoftness,
     lightAngle: s.lightAngle, animationDuration: s.animationDuration, isAnimating: s.isAnimating,
+    generationCount: s.generationCount,
     backgroundMode: s.backgroundMode,
     fogDensity: s.fogDensity, dispersion: s.dispersion,
     stardustDensity: s.stardustDensity, stardustReactivity: s.stardustReactivity,
     shockwaveIntensity: s.shockwaveIntensity, dofStrength: s.dofStrength,
+    showGrid: s.showGrid,
     setSeed: s.setSeed, setMode: s.setMode, setIsAnimating: s.setIsAnimating, randomize: s.randomize,
+    regenerate: s.regenerate,
   })));
 
   const artCanvasRef = useRef<ArtCanvasHandle | null>(null);
@@ -51,6 +57,11 @@ function GeneratorPage() {
   const handleSeedChange = useCallback((delta: number) => {
     setSeed(seed + delta);
   }, [seed, setSeed]);
+
+  // Curatorial caption labels
+  const engineLabel = engineNames[engine] ?? engine;
+  const gridLabel = gridNames[grid] ?? grid;
+  const geomLabel = geometryCatalog[geometry as keyof typeof geometryCatalog]?.label ?? geometry;
 
   return (
     <div className="fixed inset-0 z-0 flex flex-col bg-[#02060e]">
@@ -87,6 +98,8 @@ function GeneratorPage() {
             stardustReactivity={stardustReactivity}
             shockwaveIntensity={shockwaveIntensity}
             dofStrength={dofStrength}
+            generationCount={generationCount}
+            showGrid={showGrid}
             onWebGLFallback={handleWebGLFallback}
           />
         </ErrorBoundary>
@@ -143,7 +156,7 @@ function GeneratorPage() {
           </svg>
         </button>
 
-        {/* Bottom-center: Seed input */}
+        {/* Bottom-center: Seed input + CREA */}
         <div className="absolute bottom-20 left-1/2 z-20 -translate-x-1/2 md:bottom-6">
           <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/50 px-2 py-1.5 backdrop-blur-xl">
             <button
@@ -179,11 +192,33 @@ function GeneratorPage() {
               🎲
             </button>
           </div>
+          {/* CREA button */}
+          <div className="mt-2 flex justify-center">
+            <button
+              type="button"
+              onClick={regenerate}
+              className="group flex items-center gap-2 rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-6 py-2.5 text-xs font-semibold uppercase tracking-[0.2em] text-cyan-200 transition hover:bg-cyan-500/20 hover:border-cyan-400/50 hover:shadow-[0_0_25px_rgba(34,211,238,0.15)]"
+            >
+              <span className="text-sm">✦</span>
+              {t('create')}
+            </button>
+          </div>
         </div>
 
-        {/* Bottom-left: subtle info */}
-        <div className="absolute bottom-20 left-4 z-10 text-[10px] text-zinc-600 md:bottom-6">
-          {engine} · {grid} · {geometry}
+        {/* Bottom-left: Curatorial caption */}
+        <div className="absolute bottom-20 left-4 z-10 md:bottom-6 select-none pointer-events-none">
+          <p
+            className="text-[11px] font-semibold tracking-[0.12em] leading-relaxed"
+            style={{ color: '#B08D57', textShadow: '0 1px 8px rgba(0,0,0,0.6)' }}
+          >
+            {engineLabel} {seed}
+          </p>
+          <p
+            className="text-[10px] font-medium tracking-[0.08em]"
+            style={{ color: '#B08D57', opacity: 0.75, textShadow: '0 1px 6px rgba(0,0,0,0.5)' }}
+          >
+            {gridLabel} · {geomLabel}
+          </p>
         </div>
       </div>
 

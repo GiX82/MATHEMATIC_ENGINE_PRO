@@ -34,6 +34,7 @@ interface ArtworkState {
   lightAngle: number;
   animationDuration: number;
   isAnimating: boolean;
+  generationCount: number;
   backgroundMode: 'none' | 'mosaic' | 'tunnel';
   fogDensity: number;
   dispersion: number;
@@ -41,6 +42,7 @@ interface ArtworkState {
   stardustReactivity: number;
   shockwaveIntensity: number;
   dofStrength: number;
+  showGrid: boolean;
   setSeed: (value: number) => void;
   setSteps: (value: number) => void;
   setMode: (mode: RenderMode) => void;
@@ -69,6 +71,8 @@ interface ArtworkState {
   setStardustReactivity: (value: number) => void;
   setShockwaveIntensity: (value: number) => void;
   setDofStrength: (value: number) => void;
+  setShowGrid: (value: boolean) => void;
+  regenerate: () => void;
   randomize: () => void;
 }
 
@@ -97,6 +101,7 @@ export const useArtworkStore = create<ArtworkState>()(
       lightAngle: 45,
       animationDuration: 10,
       isAnimating: true,
+      generationCount: 0,
       backgroundMode: 'mosaic',
       fogDensity: 0,
       dispersion: 0,
@@ -104,6 +109,7 @@ export const useArtworkStore = create<ArtworkState>()(
       stardustReactivity: 0,
       shockwaveIntensity: 0,
       dofStrength: 0,
+      showGrid: false,
       setSeed: (value) => set({ seed: clampSeed(value) }),
       setSteps: (value) =>
         set({
@@ -140,6 +146,8 @@ export const useArtworkStore = create<ArtworkState>()(
       setStardustReactivity: (value) => set({ stardustReactivity: Math.max(0, Math.min(1, value)) }),
       setShockwaveIntensity: (value) => set({ shockwaveIntensity: Math.max(0, Math.min(1, value)) }),
       setDofStrength: (value) => set({ dofStrength: Math.max(0, Math.min(1, value)) }),
+      setShowGrid: (value) => set({ showGrid: value }),
+      regenerate: () => set((s) => ({ generationCount: s.generationCount + 1, isAnimating: true })),
       randomize: () => {
         const pick = <T>(arr: readonly T[]): T => arr[Math.floor(Math.random() * arr.length)];
         const randHex = () => '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
